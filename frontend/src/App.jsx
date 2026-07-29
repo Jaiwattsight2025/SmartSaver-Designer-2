@@ -1,3 +1,5 @@
+
+import RoofFaceList from "./components/RoofFaceList";
 import { useMemo, useRef, useState } from 'react'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
@@ -185,7 +187,7 @@ function App() {
         </div>
 
         <div className="status-cluster">
-          <span className="version-pill">M5 · COMMIT 1</span>
+          <span className="version-pill">M5 · COMMIT 2</span>
           <span className={`status-pill ${status.tone}`}>
             <span className="status-dot" />
             {status.label}
@@ -379,6 +381,8 @@ function App() {
                       </pre>
                     )}
                   </div>
+
+                  <RoofFaceList />
                 </div>
               )}
 

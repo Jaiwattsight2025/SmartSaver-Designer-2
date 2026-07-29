@@ -765,3 +765,44 @@ button:disabled {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.roof-face-list{
+    margin-top:20px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+.roof-face-card{
+    padding:12px;
+    border:1px solid #3d4651;
+    border-radius:8px;
+    background:#1b2026;
+    color:white;
+    text-align:left;
+    cursor:pointer;
+}
+
+.roof-face-card:hover{
+    border-color:#ffc400;
+}
+
+.roof-face-card.selected{
+    border:2px solid #ffc400;
+}
+
+.roof-face-card strong{
+    display:block;
+    margin-bottom:6px;
+}
+
+.roof-face-card span{
+    display:block;
+    font-size:12px;
+    color:#b8c4cf;
+}
+
+.roof-face-list.empty{
+    margin-top:20px;
+    color:#9aa5af;
+    font-size:13px;
+}
