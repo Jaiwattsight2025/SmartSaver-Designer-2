@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
 import { getBuildingInsights, summariseBuildingInsights } from './services/solarApi'
+import { useProject } from './context/ProjectContext'
 
 const steps = [
   { id: 'property', number: 1, label: 'Property', summary: 'Find and lock the site' },
@@ -53,19 +54,21 @@ const cards = {
 
 function App() {
   const [activeStep, setActiveStep] = useState('property')
-  const [address, setAddress] = useState('')
-  const [mapType, setMapType] = useState('satellite')
-  const [propertyFound, setPropertyFound] = useState(false)
-  const [mapLocked, setMapLocked] = useState(false)
+  const [addressInput, setAddressInput] = useState('')
   const [status, setStatus] = useState({ label: 'Loading map', tone: 'neutral' })
   const [mapMessage, setMapMessage] = useState('Enter a property address.')
-  const [coordinates, setCoordinates] = useState(null)
-  const [formattedAddress, setFormattedAddress] = useState('')
-  const [solarStatus, setSolarStatus] = useState('Not tested')
-  const [solarSummary, setSolarSummary] = useState(null)
-  const [solarResponse, setSolarResponse] = useState(null)
-  const [showDiagnostics, setShowDiagnostics] = useState(false)
   const mapRef = useRef(null)
+
+  const { building, actions } = useProject()
+  const {
+    formattedAddress,
+    location: coordinates,
+    mapType,
+    propertyFound,
+    mapLocked,
+    solar,
+  } = building
+
 
   const activeIndex = useMemo(
     () => steps.findIndex((step) => step.id === activeStep),
@@ -94,7 +97,7 @@ function App() {
   }
 
   const findProperty = async () => {
-    if (!address.trim()) {
+    if (!addressInput.trim()) {
       setStatus({ label: 'Address required', tone: 'error' })
       setMapMessage('Enter a street address, suburb and postcode.')
       return
@@ -110,17 +113,12 @@ function App() {
     setMapMessage('Searching for the property…')
 
     try {
-      const result = await mapRef.current.searchAddress(address.trim())
-      setAddress(result.formattedAddress)
-      setFormattedAddress(result.formattedAddress)
-      setCoordinates(result.location)
-      setPropertyFound(true)
-      setMapLocked(false)
+      const result = await mapRef.current.searchAddress(addressInput.trim())
+      setAddressInput(result.formattedAddress)
+      actions.setBuildingSearch(result)
       setStatus({ label: 'Property found', tone: 'success' })
       setMapMessage('Position the building, then lock the property.')
     } catch (error) {
-      setPropertyFound(false)
-      setCoordinates(null)
       setStatus({ label: 'Address not found', tone: 'error' })
       setMapMessage(error.message)
     }
@@ -130,11 +128,8 @@ function App() {
     if (!mapRef.current || !propertyFound || !coordinates) return
 
     mapRef.current.setInteractive(false)
-    setMapLocked(true)
-    setSolarStatus('Connecting')
-    setSolarSummary(null)
-    setSolarResponse(null)
-    setShowDiagnostics(false)
+    actions.setMapLocked(true)
+    actions.setSolarConnecting()
     setStatus({ label: 'Testing Solar API', tone: 'neutral' })
     setMapMessage('Property locked. Retrieving building insights…')
 
@@ -142,16 +137,13 @@ function App() {
       const response = await getBuildingInsights(coordinates)
       const summary = summariseBuildingInsights(response)
 
-      setSolarResponse(response)
-      setSolarSummary(summary)
-      setSolarStatus('Connected')
+      actions.setSolarSuccess({ response, summary })
       setStatus({ label: 'Solar API connected', tone: 'success' })
       setMapMessage(
         `Solar API connected. ${summary.roofSegments} roof segments were returned.`,
       )
     } catch (error) {
-      setSolarStatus('Unavailable')
-      setSolarResponse(error.details ?? { message: error.message })
+      actions.setSolarError(error.details ?? { message: error.message })
       setStatus({ label: 'Solar API unavailable', tone: 'error' })
       setMapMessage(error.message)
     }
@@ -161,32 +153,21 @@ function App() {
     if (!mapRef.current) return
 
     mapRef.current.setInteractive(true)
-    setMapLocked(false)
-    setSolarStatus('Not tested')
-    setSolarSummary(null)
-    setSolarResponse(null)
-    setShowDiagnostics(false)
+    actions.setMapLocked(false)
+    actions.resetSolar()
     setStatus({ label: 'Map unlocked', tone: 'neutral' })
     setMapMessage('Reposition the building, then lock the property again.')
   }
 
   const selectMapType = (type) => {
-    setMapType(type)
+    actions.setMapType(type)
     mapRef.current?.setMapType(type)
   }
 
   const newDesign = () => {
-    setAddress('')
-    setFormattedAddress('')
-    setCoordinates(null)
-    setPropertyFound(false)
-    setMapLocked(false)
+    setAddressInput('')
     setActiveStep('property')
-    setMapType('satellite')
-    setSolarStatus('Not tested')
-    setSolarSummary(null)
-    setSolarResponse(null)
-    setShowDiagnostics(false)
+    actions.resetProject()
     setStatus({ label: 'Map ready', tone: 'success' })
     setMapMessage('Enter a property address.')
     mapRef.current?.reset()
@@ -204,7 +185,7 @@ function App() {
         </div>
 
         <div className="status-cluster">
-          <span className="version-pill">MILESTONE 4</span>
+          <span className="version-pill">M5 · COMMIT 1</span>
           <span className={`status-pill ${status.tone}`}>
             <span className="status-dot" />
             {status.label}
@@ -278,10 +259,10 @@ function App() {
                   <input
                     id="address"
                     type="text"
-                    value={address}
+                    value={addressInput}
                     placeholder="Street, suburb and postcode"
                     disabled={mapLocked}
-                    onChange={(event) => setAddress(event.target.value)}
+                    onChange={(event) => setAddressInput(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') findProperty()
                     }}
@@ -349,52 +330,52 @@ function App() {
                   <div className="solar-panel">
                     <div className="solar-panel-heading">
                       <span>SOLAR API</span>
-                      <strong>{solarStatus}</strong>
+                      <strong>{solar.status}</strong>
                     </div>
 
                     <div className="solar-metrics">
                       <div>
                         <span>HTTP status</span>
-                        <strong>{solarSummary?.httpStatus ?? '—'}</strong>
+                        <strong>{solar.summary?.httpStatus ?? '—'}</strong>
                       </div>
                       <div>
                         <span>Roof segments</span>
-                        <strong>{solarSummary?.roofSegments ?? '—'}</strong>
+                        <strong>{solar.summary?.roofSegments ?? '—'}</strong>
                       </div>
                       <div>
                         <span>Whole roof area</span>
                         <strong>
-                          {solarSummary
-                            ? `${solarSummary.wholeRoofArea.toFixed(1)} m²`
+                          {solar.summary
+                            ? `${solar.summary.wholeRoofArea.toFixed(1)} m²`
                             : '—'}
                         </strong>
                       </div>
                       <div>
                         <span>Maximum panels</span>
-                        <strong>{solarSummary?.maximumPanels ?? '—'}</strong>
+                        <strong>{solar.summary?.maximumPanels ?? '—'}</strong>
                       </div>
                       <div>
                         <span>Imagery quality</span>
-                        <strong>{solarSummary?.imageryQuality ?? '—'}</strong>
+                        <strong>{solar.summary?.imageryQuality ?? '—'}</strong>
                       </div>
                       <div>
                         <span>Imagery date</span>
-                        <strong>{solarSummary?.imageryDate ?? '—'}</strong>
+                        <strong>{solar.summary?.imageryDate ?? '—'}</strong>
                       </div>
                     </div>
 
                     <button
                       type="button"
                       className="secondary-button diagnostic-button"
-                      disabled={!solarResponse}
-                      onClick={() => setShowDiagnostics((current) => !current)}
+                      disabled={!solar.response}
+                      onClick={actions.toggleSolarDiagnostics}
                     >
-                      {showDiagnostics ? 'Hide diagnostic response' : 'Show diagnostic response'}
+                      {solar.showDiagnostics ? 'Hide diagnostic response' : 'Show diagnostic response'}
                     </button>
 
-                    {showDiagnostics && solarResponse && (
+                    {solar.showDiagnostics && solar.response && (
                       <pre className="diagnostic-response">
-                        {JSON.stringify(solarResponse, null, 2)}
+                        {JSON.stringify(solar.response, null, 2)}
                       </pre>
                     )}
                   </div>
@@ -458,8 +439,8 @@ function App() {
                 <div className="metric-card">
                   <span>Roof area</span>
                   <strong>
-                    {solarSummary
-                      ? `${solarSummary.wholeRoofArea.toFixed(1)} m²`
+                    {solar.summary
+                      ? `${solar.summary.wholeRoofArea.toFixed(1)} m²`
                       : '—'}
                   </strong>
                 </div>
