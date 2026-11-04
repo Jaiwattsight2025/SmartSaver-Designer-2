@@ -48,11 +48,24 @@ export const DC_TO_AC_DERATE = 0.85
 // Panels
 export const MODULE_WATT_OPTIONS = [400, 415, 420, 440, 450, 475] // [ASSUMPTION] common sizes
 export const DEFAULT_MODULE_WATTS = 440 // [ASSUMPTION] same as Wattsight PANEL_WATTS
-// [ASSUMPTION] Typical 440 W module, metres (used by the grid fallback).
+// [ASSUMPTION] Typical 440 W module, metres (default size for the layout).
 export const MODULE_WIDTH_M = 1.134
 export const MODULE_HEIGHT_M = 1.762
-export const PANEL_GAP_M = 0.02
-export const ROOF_EDGE_SETBACK_M = 0.3 // [ASSUMPTION] keep clear of roof edges
+// [ASSUMPTION] Typical module sizes (width x height, metres) per wattage - check the actual datasheet.
+export const MODULE_DIMENSIONS_BY_WATTS = {
+  400: { widthM: 1.134, heightM: 1.722 },
+  415: { widthM: 1.134, heightM: 1.722 },
+  420: { widthM: 1.134, heightM: 1.762 },
+  440: { widthM: 1.134, heightM: 1.762 },
+  450: { widthM: 1.134, heightM: 1.762 },
+  475: { widthM: 1.134, heightM: 1.909 },
+}
+export const PANEL_GAP_M = 0.02 // [ASSUMPTION] clamp gap between panels in a row
+export const ROW_GAP_M = 0.02 // [ASSUMPTION] gap between rows (flush-mounted)
+export const ROOF_EDGE_SETBACK_M = 0.4 // [ASSUMPTION] keep panels this far inside every roof edge
+export const OBSTACLE_CLEARANCE_M = 0.3 // [ASSUMPTION] keep panels this far from vents, skylights, etc.
+export const DEFAULT_PANEL_ORIENTATION = 'portrait' // long side up the roof
+export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the nearest grid spot within this distance
 export const MIN_FACE_AREA_M2 = 4 // faces smaller than this are not worth a panel row
 export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] same as Wattsight (check DNSP)
 
