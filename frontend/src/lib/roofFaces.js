@@ -1,13 +1,14 @@
 /*
  * Roof Face Engine: turn Google Solar API roof segments into roof faces the
  * customer can include / exclude, plus manually traced faces.
- * (Ported from SmartSaver-Solar-Designer v0.7.0 js/detector.js, improved: a
- * face outline is the hull of Google's panel positions on that segment when
- * available, falling back to the segment's bounding box.)
+ * D2: each outline is estimated from the segment's size, slope direction and
+ * area (see roofOutline.js) instead of hugging Google's panel spots, and the
+ * customer confirms or drags the corners before panels are placed.
  */
 import { MIN_FACE_AREA_M2 } from '../config/designerConfig'
 import { orientationFromAzimuth } from '../models/RoofFace'
-import { centroid, convexHullXY, fromLocal, panelCorners, planAreaM2, toLatLng, toLocal } from './geo'
+import { centroid, planAreaM2, toLatLng } from './geo'
+import { estimateSegmentOutline } from './roofOutline'
 
 export function sunExposure(medianSunshine) {
   if (!Number.isFinite(medianSunshine) || medianSunshine <= 0) return 'Unknown'
@@ -55,15 +56,17 @@ export function facesFromBuildingInsights(insights) {
     const azimuth = Number(seg.azimuthDegrees) || 0
     const pitch = Number(seg.pitchDegrees) || 0
     const segPanels = panels.filter((p) => p.segmentIndex === index)
-    let vertices = []
-    if (segPanels.length) {
-      const origin = toLatLng(seg.center) ?? toLatLng(segPanels[0].center)
-      const corners = segPanels.flatMap((p) =>
-        panelCorners(toLatLng(p.center), size.widthM, size.heightM, azimuth, p.orientation === 'PORTRAIT'),
-      )
-      vertices = convexHullXY(corners.map((c) => toLocal(origin, c))).map((xy) => fromLocal(origin, xy))
+    const outline = estimateSegmentOutline(
+      seg,
+      segPanels.map((p) => ({ ...toLatLng(p.center), orientation: p.orientation })),
+      { panelWidthM: size.widthM, panelHeightM: size.heightM },
+    )
+    let vertices = outline.vertices
+    if (vertices.length < 3) {
+      vertices = boxCorners(seg.boundingBox)
+      outline.confidence = 'low'
+      outline.shape = 'box'
     }
-    if (vertices.length < 3) vertices = boxCorners(seg.boundingBox)
 
     const sunshine = median(seg.stats?.sunshineQuantiles)
     const area = Number(seg.stats?.areaMeters2) || 0
@@ -81,6 +84,10 @@ export function facesFromBuildingInsights(insights) {
       sunshineKwhM2: sunshine,
       sunExposure: sunExposure(sunshine),
       googlePanelCount: segPanels.length,
+      outlineShape: outline.shape,
+      outlineConfidence: outline.confidence,
+      outlineNote: outline.note,
+      outlineEdited: false,
       source: 'solar-api',
       included: false,
     }
@@ -91,7 +98,12 @@ export function facesFromBuildingInsights(insights) {
   const best = Math.max(0, ...faces.map((f) => f.sunshineKwhM2 ?? 0))
   for (const f of faces) {
     const sunnyEnough = best === 0 || (f.sunshineKwhM2 ?? 0) >= 0.75 * best
-    f.included = f.areaSquareMetres >= MIN_FACE_AREA_M2 && sunnyEnough && (f.googlePanelCount > 0 || panels.length === 0)
+    // Rough (low-confidence) outlines are left out until the customer fixes and ticks them.
+    f.included =
+      f.areaSquareMetres >= MIN_FACE_AREA_M2 &&
+      sunnyEnough &&
+      f.outlineConfidence !== 'low' &&
+      (f.googlePanelCount > 0 || panels.length === 0)
   }
   return faces
 }
@@ -115,6 +127,10 @@ export function manualFace({ id, vertices, pitchDegrees = 20, azimuthDegrees = 0
     sunshineKwhM2: null,
     sunExposure: 'Unknown',
     googlePanelCount: 0,
+    outlineShape: 'traced',
+    outlineConfidence: 'high',
+    outlineNote: 'Traced by you.',
+    outlineEdited: true,
     source: 'manual',
     included: true,
   }
