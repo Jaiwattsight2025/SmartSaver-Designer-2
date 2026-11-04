@@ -1,3 +1,4 @@
+import { DEFAULT_MODULE_WATTS } from '../config/designerConfig'
 import { createEmptyBuilding } from './Building'
 
 export function createEmptyProject() {
@@ -19,6 +20,15 @@ export function createEmptyProject() {
       usableCapacityKwh: 0,
       chargePowerKw: 0,
       dischargePowerKw: 0,
+    },
+    // { profile, warnings, error, origin: 'link' | 'file' | 'manual' } or null
+    energyProfile: null,
+    // Customer choices; null = use the suggested value
+    design: {
+      moduleWatts: DEFAULT_MODULE_WATTS,
+      panelCount: null,
+      batteryKwh: null,
+      inverterKw: null,
     },
     results: {
       annualIrradianceKwhM2: null,
