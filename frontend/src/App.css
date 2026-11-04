@@ -1398,3 +1398,19 @@ details.solar-panel summary::-webkit-details-marker {
   flex-direction: column;
   gap: 6px;
 }
+
+/* D2: keep the map in view (and the house centred) when the step list is long */
+@media (min-width: 851px) {
+  .design-stage.map-mode {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    height: calc(100vh - 24px);
+    display: flex;
+    flex-direction: column;
+  }
+  .design-stage.map-mode .map-stage {
+    flex: 1;
+    min-height: 520px;
+  }
+}

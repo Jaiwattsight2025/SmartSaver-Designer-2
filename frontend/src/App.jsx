@@ -505,7 +505,7 @@ function App() {
               </div>
             </section>
 
-            <section className="design-stage">
+            <section className={`design-stage ${showReport ? '' : 'map-mode'}`}>
               <div className="stage-header">
                 <div>
                   <span>DESIGN CANVAS</span>
