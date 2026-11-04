@@ -1,0 +1,5 @@
+export const fmtKwh = (x) => (x === null || x === undefined || Number.isNaN(x) ? '—' : `${Math.round(x).toLocaleString('en-AU')} kWh`)
+export const fmtMoney = (x) => (x === null || x === undefined || Number.isNaN(x) ? '—' : `$${Math.round(x).toLocaleString('en-AU')}`)
+export const fmtKw = (x) => (x === null || x === undefined ? '—' : `${(Math.round(x * 100) / 100).toLocaleString('en-AU')} kW`)
+export const fmtPct = (x) => (x === null || x === undefined ? '—' : `${Math.round(x)}%`)
+export const fmtYears = (x) => (x === null || x === undefined ? '—' : `${x.toFixed(1)} years`)

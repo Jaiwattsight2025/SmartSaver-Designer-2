@@ -1,0 +1,66 @@
+/*
+ * SMARTSAVER DESIGNER - MODELLING ASSUMPTIONS
+ *
+ * Every number the Designer uses that does NOT come from the customer's bill
+ * or Google's roof data lives here.
+ *   [ASSUMPTION]  engineering / industry rule of thumb - reasonable, but review.
+ * Prices live in pricing.js (all [PLACEHOLDER]).
+ *
+ * Values marked "same as Wattsight" are copied from
+ * Wattsight\platform\config\assumptions.py so both tools give the same answer.
+ */
+
+export const STATES = ['NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'ACT', 'NT']
+
+// Fallbacks used only when the bill (or the customer) does not give a value.
+export const DEFAULT_IMPORT_RATE = 0.3 // [ASSUMPTION] $/kWh (same as Wattsight)
+export const DEFAULT_SUPPLY_PER_DAY = 1.1 // [ASSUMPTION] $/day (same as Wattsight)
+export const DEFAULT_FEED_IN_RATE = 0.05 // [ASSUMPTION] $/kWh (same as Wattsight)
+
+// [ASSUMPTION] Annual AC output per kW of panels, kWh/kW/yr (same as Wattsight).
+// Used only when Google's roof-specific panel data is not available.
+export const SOLAR_YIELD_BY_STATE = {
+  NSW: 1424, ACT: 1570, VIC: 1314, QLD: 1533, SA: 1533, WA: 1606, TAS: 1278, NT: 1606,
+}
+export const NATIONAL_FALLBACK_YIELD = 1460
+
+// [ASSUMPTION] Summer/winter swing in solar output (same as Wattsight).
+export const SEASONAL_SWING_BY_STATE = {
+  TAS: 0.5, VIC: 0.45, SA: 0.38, NSW: 0.33, ACT: 0.4, WA: 0.35, QLD: 0.25, NT: 0.1,
+}
+export const DEFAULT_SEASONAL_SWING = 0.35
+
+// [ASSUMPTION] Hourly shapes (fraction of the day's total), same as Wattsight.
+export const SOLAR_HOURLY_SHAPE = [
+  0, 0, 0, 0, 0, 0.005, 0.02, 0.045, 0.075, 0.1, 0.115, 0.125,
+  0.125, 0.115, 0.1, 0.075, 0.05, 0.03, 0.015, 0, 0, 0, 0, 0,
+]
+export const LOAD_HOURLY_SHAPE = [
+  0.025, 0.022, 0.02, 0.02, 0.021, 0.026, 0.04, 0.05, 0.045, 0.038,
+  0.035, 0.035, 0.035, 0.035, 0.037, 0.042, 0.055, 0.07, 0.08, 0.075,
+  0.065, 0.055, 0.043, 0.031,
+]
+
+// [ASSUMPTION] Google's yearlyEnergyDcKwh is DC at the panel; this covers
+// inverter, wiring, soiling and temperature losses (Google's own sample uses 0.85).
+export const DC_TO_AC_DERATE = 0.85
+
+// Panels
+export const MODULE_WATT_OPTIONS = [400, 415, 420, 440, 450, 475] // [ASSUMPTION] common sizes
+export const DEFAULT_MODULE_WATTS = 440 // [ASSUMPTION] same as Wattsight PANEL_WATTS
+// [ASSUMPTION] Typical 440 W module, metres (used by the grid fallback).
+export const MODULE_WIDTH_M = 1.134
+export const MODULE_HEIGHT_M = 1.762
+export const PANEL_GAP_M = 0.02
+export const ROOF_EDGE_SETBACK_M = 0.3 // [ASSUMPTION] keep clear of roof edges
+export const MIN_FACE_AREA_M2 = 4 // faces smaller than this are not worth a panel row
+export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] same as Wattsight (check DNSP)
+
+// Inverter & battery
+export const INVERTER_SIZES_KW = [3, 5, 6, 8, 10, 15] // [ASSUMPTION] common single/three-phase sizes
+export const MAX_DC_AC_RATIO = 1.33 // [ASSUMPTION] CEC panel-to-inverter oversizing limit
+export const BATTERY_SIZE_OPTIONS_KWH = [0, 5, 10, 13.5, 16, 20, 25, 30] // [ASSUMPTION]
+export const BATTERY_ROUND_TRIP_EFFICIENCY = 0.9 // [ASSUMPTION] same as Wattsight
+
+export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
