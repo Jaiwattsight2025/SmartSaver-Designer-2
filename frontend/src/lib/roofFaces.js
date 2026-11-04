@@ -7,7 +7,7 @@
  */
 import { MIN_FACE_AREA_M2 } from '../config/designerConfig'
 import { orientationFromAzimuth } from '../models/RoofFace'
-import { centroid, planAreaM2, toLatLng, toLocal } from './geo'
+import { centroid, fromLocal, planAreaM2, toLatLng, toLocal } from './geo'
 import { overlapArea } from './polygon'
 import { estimateSegmentOutline } from './roofOutline'
 
@@ -183,4 +183,98 @@ export function faceOverlaps(faces, minM2 = 1) {
     }
   }
   return out
+}
+
+/*
+ * Ridge split (ported from the old roof.js splitPolygonByLine): cut a face in
+ * two along the line through `a` and `b` (lat/lng). Each half slopes away from
+ * the line; the half that faces the original way keeps the original azimuth.
+ * Returns [faceA, faceB] or null when the line does not cut the face.
+ */
+export function splitPolygonByLine(polygon, lineStart, lineEnd, minAreaM2 = 1) {
+  const dx = lineEnd.x - lineStart.x
+  const dy = lineEnd.y - lineStart.y
+  const len = Math.hypot(dx, dy)
+  if (len < 1e-6) return null
+  const side = (p) => (dx * (p.y - lineStart.y) - dy * (p.x - lineStart.x)) / len
+  const eps = 0.001
+  const positive = []
+  const negative = []
+  for (let i = 0; i < polygon.length; i += 1) {
+    const cur = polygon[i]
+    const nxt = polygon[(i + 1) % polygon.length]
+    const sc = side(cur)
+    const sn = side(nxt)
+    if (sc >= -eps) positive.push({ ...cur })
+    if (sc <= eps) negative.push({ ...cur })
+    if ((sc > eps && sn < -eps) || (sc < -eps && sn > eps)) {
+      const t = sc / (sc - sn)
+      const x = { x: cur.x + t * (nxt.x - cur.x), y: cur.y + t * (nxt.y - cur.y) }
+      positive.push(x)
+      negative.push({ ...x })
+    }
+  }
+  const clean = (pts) => {
+    const out = []
+    for (const p of pts) {
+      const prev = out[out.length - 1]
+      if (!prev || Math.hypot(p.x - prev.x, p.y - prev.y) > 0.05) out.push(p)
+    }
+    if (out.length > 2 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= 0.05) out.pop()
+    return out
+  }
+  const area = (p) => Math.abs(p.reduce((s, q, i) => { const r = p[(i + 1) % p.length]; return s + q.x * r.y - r.x * q.y }, 0)) / 2
+  const A = clean(positive)
+  const B = clean(negative)
+  if (A.length < 3 || B.length < 3 || area(A) < minAreaM2 || area(B) < minAreaM2) return null
+  return [A, B]
+}
+
+export function splitFace(face, a, b) {
+  if (!face?.vertices?.length || face.vertices.length < 3) return null
+  const origin = toLatLng(face.center) ?? face.vertices[0]
+  const poly = face.vertices.map((v) => toLocal(origin, toLatLng(v)))
+  const la = toLocal(origin, toLatLng(a))
+  const lb = toLocal(origin, toLatLng(b))
+  const halves = splitPolygonByLine(poly, la, lb)
+  if (!halves) return null
+
+  // Down-slope direction of each half: perpendicular to the ridge, away from it.
+  const ux = lb.x - la.x
+  const uy = lb.y - la.y
+  const len = Math.hypot(ux, uy)
+  const azOf = (half) => {
+    const c = half.reduce((s, p) => ({ x: s.x + p.x / half.length, y: s.y + p.y / half.length }), { x: 0, y: 0 })
+    let nx = -uy / len
+    let ny = ux / len
+    if ((c.x - la.x) * nx + (c.y - la.y) * ny < 0) {
+      nx = -nx
+      ny = -ny
+    }
+    return ((Math.atan2(nx, ny) * 180) / Math.PI + 360) % 360
+  }
+  const angDiff = (p, q) => Math.abs(((p - q + 540) % 360) - 180)
+  const azs = halves.map(azOf)
+  const keep = angDiff(azs[0], face.azimuthDegrees) <= angDiff(azs[1], face.azimuthDegrees) ? 0 : 1
+  const stamp = Date.now().toString(36)
+  return halves.map((half, i) => {
+    const vertices = half.map((p) => fromLocal(origin, p))
+    const az = i === keep ? face.azimuthDegrees : Math.round(azs[i])
+    const piece = manualFace({
+      id: `${face.id}-${i === 0 ? 'a' : 'b'}${stamp}`,
+      vertices,
+      pitchDegrees: face.pitchDegrees,
+      azimuthDegrees: az,
+      label: `${face.label} ${i === 0 ? 'a' : 'b'}`,
+    })
+    return {
+      ...piece,
+      included: face.included,
+      outlineNote: 'Split along a ridge by you.',
+      splitFrom: face.id,
+      // Sun figures only carry over to the half that still faces the same way.
+      sunshineKwhM2: i === keep ? face.sunshineKwhM2 : null,
+      sunExposure: i === keep ? face.sunExposure : 'Unknown',
+    }
+  })
 }

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
-import { editedOutline, editedPitch, faceOverlaps, manualFace, roofTotals } from '../../lib/roofFaces'
+import { editedOutline, editedPitch, faceOverlaps, manualFace, roofTotals, splitFace } from '../../lib/roofFaces'
 
-function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline }) {
+function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline, onSplit }) {
   return (
     <div className={`roof-face-card ${selected ? 'selected' : ''} ${face.included ? 'included' : ''}`} onClick={onSelect}>
       <div className="face-row">
@@ -64,6 +64,13 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
           )}
         </div>
       )}
+      {selected && onSplit && (
+        <div className="face-edit" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="link-button split-face" onClick={onSplit}>
+            Split along a ridge
+          </button>
+        </div>
+      )}
       {face.source === 'manual' && selected && (
         <div className="face-edit" onClick={(e) => e.stopPropagation()}>
           <label>
@@ -88,7 +95,13 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
                 ['South-west', 225],
                 ['West', 270],
                 ['North-west', 315],
-              ].map(([l, v]) => (
+              ]
+                .concat(
+                  [0, 45, 90, 135, 180, 225, 270, 315].includes(Number(face.azimuthDegrees))
+                    ? []
+                    : [[`${face.orientation ?? 'Custom'} (${face.azimuthDegrees}°)`, Number(face.azimuthDegrees)]],
+                )
+                .map(([l, v]) => (
                 <option key={v} value={v}>
                   {l}
                 </option>
@@ -107,7 +120,8 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
 export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }) {
   const { building, designChoices, actions } = useProject()
   const [tracePoints, setTracePoints] = useState(null) // null = not tracing
-  const [traceKind, setTraceKind] = useState('face') // 'face' | 'obstacle'
+  const [traceKind, setTraceKind] = useState('face') // 'face' | 'obstacle' | 'split'
+  const [splitError, setSplitError] = useState('')
   const faces = building.roofFaces
   const obstacles = designChoices?.obstacles ?? []
   const overlaps = faceOverlaps(faces)
@@ -133,7 +147,30 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
     if (!map) return
     setTraceKind(kind)
     setTracePoints([])
-    map.startTracing((pts) => setTracePoints(pts), { color: kind === 'obstacle' ? '#ff4d4f' : '#65d487' })
+    setSplitError('')
+    const color = kind === 'obstacle' ? '#ff4d4f' : kind === 'split' ? '#ffffff' : '#65d487'
+    map.startTracing(
+      (pts) => {
+        setTracePoints(pts)
+        if (kind === 'split' && pts.length >= 2) finishSplit(pts)
+      },
+      { color },
+    )
+  }
+  // Ridge split: two clicks on the map along the ridge (or hip / valley) line.
+  const finishSplit = (pts) => {
+    map.finishTracing()
+    setTracePoints(null)
+    onRedraw?.()
+    const face = faces.find((f) => f.id === building.selectedRoofFaceId)
+    const parts = face ? splitFace(face, pts[0], pts[1]) : null
+    if (!parts) {
+      setSplitError('That line does not cut the selected face in two. Click two points along the ridge, across the face.')
+      return
+    }
+    parts.forEach((p) => actions.addRoofFace(p))
+    actions.removeRoofFace(face.id)
+    actions.selectRoofFace(parts[0].id)
   }
   const finishTrace = () => {
     const pts = map.finishTracing()
@@ -210,6 +247,7 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             onToggle={() => actions.toggleRoofFace(face.id)}
             onUpdate={(changes) => recalc(face, changes)}
             onRemove={() => actions.removeRoofFace(face.id)}
+            onSplit={tracePoints === null && map ? () => startTrace('split') : undefined}
             onResetOutline={() =>
               actions.updateRoofFace(face.id, {
                 ...editedOutlineReset(face),
@@ -243,6 +281,7 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
         ))}
       </div>
 
+      {splitError && <div className="info-box error">{splitError}</div>}
       {tracePoints === null ? (
         <div className="two-column-buttons">
           <button type="button" className="secondary-button" onClick={() => startTrace('face')} disabled={!map}>
@@ -263,9 +302,15 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
           <strong>
             {traceKind === 'obstacle'
               ? 'Click each corner of the vent, skylight or unit on the map'
-              : 'Tracing: click each corner of the roof face on the map'}
+              : traceKind === 'split'
+                ? 'Split: click two points along the ridge line on the map'
+                : 'Tracing: click each corner of the roof face on the map'}
           </strong>
-          <small>{tracePoints.length} corner{tracePoints.length === 1 ? '' : 's'} so far (at least 3)</small>
+          <small>
+            {traceKind === 'split'
+              ? `${tracePoints.length} of 2 points`
+              : `${tracePoints.length} corner${tracePoints.length === 1 ? '' : 's'} so far (at least 3)`}
+          </small>
           <div className="three-column-buttons">
             <button type="button" className="secondary-button" onClick={() => setTracePoints(map.undoTracePoint())}>
               Undo
@@ -273,7 +318,12 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             <button type="button" className="secondary-button" onClick={cancelTrace}>
               Cancel
             </button>
-            <button type="button" className="primary-button" onClick={finishTrace} disabled={tracePoints.length < 3}>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={finishTrace}
+              disabled={traceKind === 'split' || tracePoints.length < 3}
+            >
               Finish
             </button>
           </div>
