@@ -1,13 +1,16 @@
 /*
  * Google Solar API dataLayers: the 3D surface (DSM) and building mask around a
  * locked property. Mindful of cost: one dataLayers call per locked building,
- * cached in memory and in sessionStorage, and in-flight requests are shared.
+ * cached in memory and in localStorage (30 days, last few buildings only), and
+ * in-flight requests are shared.
  */
 import { fromArrayBuffer } from 'geotiff'
 
 const ENDPOINT = 'https://solar.googleapis.com/v1/dataLayers:get'
 const PIXEL_M = 0.25
 const CACHE_PREFIX = 'ssd.dataLayers.v1.'
+const CACHE_DAYS = 30
+const CACHE_MAX = 6
 const memory = new Map()
 
 function getApiKey() {
@@ -48,23 +51,43 @@ function unb64(str) {
   return bytes.buffer
 }
 
-function readSession(key) {
+const store = () => {
   try {
-    const raw = globalThis.sessionStorage?.getItem(CACHE_PREFIX + key)
-    if (!raw) return null
-    const j = JSON.parse(raw)
-    return { ...j, dsm: new Float32Array(unb64(j.dsm)), mask: new Uint8Array(unb64(j.mask)), fromCache: 'session' }
+    return globalThis.localStorage ?? null
   } catch {
     return null
   }
 }
-function writeSession(key, layers) {
+
+function readCache(key) {
   try {
+    const raw = store()?.getItem(CACHE_PREFIX + key)
+    if (!raw) return null
+    const j = JSON.parse(raw)
+    if (!j.savedAt || Date.now() - j.savedAt > CACHE_DAYS * 864e5) {
+      store().removeItem(CACHE_PREFIX + key)
+      return null
+    }
+    return { ...j, dsm: new Float32Array(unb64(j.dsm)), mask: new Uint8Array(unb64(j.mask)), fromCache: true }
+  } catch {
+    return null
+  }
+}
+
+function writeCache(key, layers) {
+  const ls = store()
+  if (!ls) return
+  try {
+    // Keep only the most recent few buildings.
+    const old = []
+    for (let i = 0; i < ls.length; i += 1) {
+      const k = ls.key(i)
+      if (k?.startsWith(CACHE_PREFIX)) old.push([k, JSON.parse(ls.getItem(k))?.savedAt ?? 0])
+    }
+    old.sort((a, b) => a[1] - b[1])
+    while (old.length >= CACHE_MAX) ls.removeItem(old.shift()[0])
     const { dsm, mask, ...rest } = layers
-    globalThis.sessionStorage?.setItem(
-      CACHE_PREFIX + key,
-      JSON.stringify({ ...rest, dsm: b64(dsm.buffer), mask: b64(mask.buffer) }),
-    )
+    ls.setItem(CACHE_PREFIX + key, JSON.stringify({ ...rest, savedAt: Date.now(), dsm: b64(dsm.buffer), mask: b64(mask.buffer) }))
   } catch {
     // Storage full or unavailable: the in-memory cache still holds it.
   }
@@ -127,7 +150,7 @@ export function getRoofLayers(insights) {
   if (!insights?.center) return Promise.reject(new Error('No building to fetch 3D roof data for.'))
   const key = cacheKey(insights)
   if (memory.has(key)) return memory.get(key)
-  const cached = readSession(key)
+  const cached = readCache(key)
   if (cached) {
     const p = Promise.resolve(cached)
     memory.set(key, p)
@@ -135,7 +158,7 @@ export function getRoofLayers(insights) {
   }
   const p = requestLayers(insights).then(
     (layers) => {
-      writeSession(key, layers)
+      writeCache(key, layers)
       return layers
     },
     (err) => {
