@@ -116,6 +116,31 @@ export async function createMapController(container) {
     list.length = 0
   }
 
+  // Dev-only hook so the browser e2e can find panels / corners on the real map.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const probe = new maps.OverlayView()
+    probe.onAdd = () => {}
+    probe.draw = () => {}
+    probe.onRemove = () => {}
+    probe.setMap(map)
+    const centreOf = (poly) => {
+      const pts = poly.getPath().getArray()
+      return { lat: pts.reduce((t, p) => t + p.lat(), 0) / pts.length, lng: pts.reduce((t, p) => t + p.lng(), 0) / pts.length }
+    }
+    window.__ssdMap = {
+      toPixel(ll) {
+        const p = probe.getProjection()?.fromLatLngToContainerPixel(new maps.LatLng(ll.lat, ll.lng))
+        return p ? { x: p.x, y: p.y } : null
+      },
+      panels: () => overlays.panels.filter((p) => p.get('ssdKind') === 'panel').map((p) => ({ id: p.get('ssdId'), ...centreOf(p) })),
+      ghosts: () => overlays.panels.filter((p) => p.get('ssdKind') === 'ghost').map((p) => ({ id: p.get('ssdId'), ...centreOf(p) })),
+      editableFace: () => {
+        const f = overlays.faces.find((p) => p.getEditable())
+        return f ? f.getPath().getArray().map((ll) => ({ lat: ll.lat(), lng: ll.lng() })) : null
+      },
+    }
+  }
+
   const controller = {
     async searchAddress(address) {
       const result = await geocodeAddress(geocoder, address)
@@ -251,6 +276,7 @@ export async function createMapController(container) {
           fillOpacity: 0.08,
           zIndex: 4,
         })
+        g.setValues({ ssdKind: 'ghost', ssdId: ghost.id })
         if (opts.onGhostClick) g.addListener('click', () => opts.onGhostClick(ghost.id))
         overlays.panels.push(g)
       }
@@ -267,6 +293,7 @@ export async function createMapController(container) {
           fillOpacity: 0.85,
           zIndex: 5,
         })
+        poly.setValues({ ssdKind: 'panel', ssdId: panel.id })
         if (opts.onPanelClick) poly.addListener('click', () => opts.onPanelClick(panel.id))
         if (opts.onPanelDrag) {
           poly.addListener('dragend', () => {
