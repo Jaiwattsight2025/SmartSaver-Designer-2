@@ -5,11 +5,16 @@
  * of the auto-fill until the user ticks them.
  *
  * A face is flagged when at least two of these hold:
- *   - low: its plane sits less than 2.6 m above the local ground (3D data), or
- *     1 m or more below the main roof,
- *   - flat: pitch under 12 degrees,
+ *   - low: its plane sits less than 2.6 m above the local ground (3D data);
+ *     only when the ground height is unknown or implausible (dense blocks,
+ *     big buildings) do we fall back to "1 m or more below the main roof", so
+ *     the lower roof of a two-storey house is not mistaken for a verandah,
+ *   - flat: pitch under 12 degrees, unless the main roof is itself flat
+ *     (warehouses, modern flat-roof homes),
  *   - narrow: under 1.8 m across at its narrowest,
  *   - weak and small: the outline is not high confidence and it is under 15 m².
+ * A face steeper than 60 degrees is a wall or parapet edge and is flagged on
+ * its own.
  * Being both low above ground and well below the main roof counts once.
  */
 import { toLatLng, toLocal } from './geo'
@@ -20,6 +25,8 @@ const BELOW_MAIN_M = 1.0
 const FLAT_PITCH_DEG = 12
 const NARROW_M = 1.8
 const SMALL_M2 = 15
+const WALL_PITCH_DEG = 60
+const GROUND_PLAUSIBLE_M = [0.5, 40] // outside this the local ground estimate hit other roofs or noise
 
 /** Narrowest width of a face outline (metres, rotating callipers over its edges). */
 export function minWidthM(vertices) {
@@ -54,14 +61,17 @@ const planeHeight = (face, stats) =>
   Number(face.dsmMetrics?.heightM ?? stats?.[face.segmentIndex]?.planeHeightAtCenterMeters) || null
 
 /** Reasons a face looks like it is not main roof (empty when it looks fine). */
-export function nonRoofReasons(face, { mainHeightM = null, stats = null } = {}) {
+export function nonRoofReasons(face, { mainHeightM = null, stats = null, mainIsFlat = false } = {}) {
   const reasons = []
+  if ((Number(face.pitchDegrees) || 0) >= WALL_PITCH_DEG) reasons.push(`steeper than ${WALL_PITCH_DEG}° (likely a wall or parapet)`)
   const h = planeHeight(face, stats)
   const hag = face.dsmMetrics?.heightAboveGroundM
-  if (Number.isFinite(hag) && hag < LOW_ABOVE_GROUND_M) reasons.push(`only ${hag.toFixed(1)} m above the ground`)
-  else if (h !== null && mainHeightM !== null && mainHeightM - h >= BELOW_MAIN_M)
+  const groundKnown = Number.isFinite(hag) && hag >= GROUND_PLAUSIBLE_M[0] && hag <= GROUND_PLAUSIBLE_M[1]
+  if (groundKnown) {
+    if (hag < LOW_ABOVE_GROUND_M) reasons.push(`only ${hag.toFixed(1)} m above the ground`)
+  } else if (h !== null && mainHeightM !== null && mainHeightM - h >= BELOW_MAIN_M)
     reasons.push(`${(mainHeightM - h).toFixed(1)} m below the main roof`)
-  if ((Number(face.pitchDegrees) || 0) < FLAT_PITCH_DEG) reasons.push(`nearly flat (${face.pitchDegrees}°)`)
+  if (!mainIsFlat && (Number(face.pitchDegrees) || 0) < FLAT_PITCH_DEG) reasons.push(`nearly flat (${face.pitchDegrees}°)`)
   const w = minWidthM(face.vertices)
   if (w > 0 && w < NARROW_M) reasons.push(`only ${w.toFixed(1)} m wide`)
   if (face.outlineConfidence !== 'high' && (Number(face.areaSquareMetres) || 0) < SMALL_M2)
@@ -77,10 +87,13 @@ export function flagNonRoofFaces(faces, insights) {
   const stats = insights?.solarPotential?.roofSegmentStats ?? null
   const big = (faces ?? []).filter((f) => (Number(f.areaSquareMetres) || 0) >= SMALL_M2)
   const mainHeightM = weightedMedian(big.map((f) => ({ v: planeHeight(f, stats), w: Number(f.areaSquareMetres) || 0 })))
+  const mainPitch = weightedMedian(big.map((f) => ({ v: Number(f.pitchDegrees) || 0, w: Number(f.areaSquareMetres) || 0 })))
+  const mainIsFlat = mainPitch !== null && mainPitch < FLAT_PITCH_DEG
   return (faces ?? []).map((f) => {
     if (f.source !== 'solar-api' || f.outlineEdited) return f
-    const reasons = nonRoofReasons(f, { mainHeightM, stats })
-    if (reasons.length < 2) return f.nonRoofLikely ? { ...f, nonRoofLikely: false, nonRoofReasons: [] } : f
+    const reasons = nonRoofReasons(f, { mainHeightM, stats, mainIsFlat })
+    const wall = (Number(f.pitchDegrees) || 0) >= WALL_PITCH_DEG
+    if (!wall && reasons.length < 2) return f.nonRoofLikely ? { ...f, nonRoofLikely: false, nonRoofReasons: [] } : f
     return { ...f, nonRoofLikely: true, nonRoofReasons: reasons, included: false }
   })
 }
