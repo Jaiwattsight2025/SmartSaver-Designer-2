@@ -13,6 +13,7 @@ import { getBuildingInsights, summariseBuildingInsights } from './services/solar
 import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
+import { toLocal } from './lib/geo'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
@@ -90,8 +91,9 @@ function App() {
     const placed = layout.panels.map((p) => p.id)
     const removedIds = designChoices.removedPanelIds ?? []
     const pinnedIds = designChoices.pinnedPanelIds ?? []
-    return {
+    const api = {
       remove(id) {
+        if (removedIds.includes(id) || !placed.includes(id)) return
         actions.updateDesign({
           removedPanelIds: [...new Set([...removedIds, id])],
           pinnedPanelIds: pinnedIds.filter((x) => x !== id),
@@ -99,6 +101,7 @@ function App() {
         })
       },
       add(id) {
+        if (placed.includes(id)) return
         actions.updateDesign({
           removedPanelIds: removedIds.filter((x) => x !== id),
           pinnedPanelIds: [...pinnedIds.filter((x) => x !== id), id],
@@ -106,6 +109,14 @@ function App() {
         })
       },
       drag(id, latLng) {
+        // A click with a little hand jitter turns into a tiny drag on a draggable
+        // polygon (and Google then skips the click): treat it as the click.
+        const orig = layout.panels.find((p) => p.id === id)
+        const moved = orig?.center ? toLocal(orig.center, latLng) : null
+        if (moved && Math.hypot(moved.x, moved.y) < 0.2) {
+          api.remove(id)
+          return
+        }
         const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
         const cell = snapToCell(pool, latLng, { exclude: placed })
         if (!cell || cell.id === id) {
@@ -119,6 +130,7 @@ function App() {
         })
       },
     }
+    return api
   }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, actions])
 
   // Draw roof faces, no-go areas and panels on the map for the current step.
