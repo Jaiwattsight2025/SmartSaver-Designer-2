@@ -28,3 +28,7 @@ npm-debug.log*
 # Temporary files
 *.tmp
 *.bak
+# All env files (keep example template)
+.env*
+!.env.example
+
