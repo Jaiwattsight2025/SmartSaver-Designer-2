@@ -17,6 +17,8 @@ import {
   DEFAULT_PANEL_ORIENTATION,
   MAX_ADDED_PANEL_SNAP_M,
   MAX_RESIDENTIAL_KW,
+  MIN_PANELS_PER_FACE,
+  MIN_PANELS_PER_FACE_SMALL,
   MODULE_DIMENSIONS_BY_WATTS,
   MODULE_HEIGHT_M,
   MODULE_WIDTH_M,
@@ -24,6 +26,7 @@ import {
   PANEL_GAP_M,
   ROOF_EDGE_SETBACK_M,
   ROW_GAP_M,
+  SMALL_SYSTEM_PANELS,
 } from '../config/designerConfig'
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
@@ -187,7 +190,8 @@ function near(a, b, gap) {
  * options: insights, faces, panelCount, moduleWatts, state,
  *          orientation ('portrait' | 'landscape'), setbackM, gapM, rowGapM,
  *          removedPanelIds, pinnedPanelIds, obstacles [{ id, vertices }],
- *          maxKw (default MAX_RESIDENTIAL_KW)
+ *          maxKw (default MAX_RESIDENTIAL_KW),
+ *          minPanelsPerFace (default 4, or 2 for a tiny system)
  *
  * Returns { panels, candidates, available, count, dcKw, annualAcKwh, source,
  *           googleWatts, faceStats, notes, blockedByObstacles, capped }.
@@ -206,6 +210,7 @@ export function layoutPanels({
   pinnedPanelIds = [],
   obstacles = [],
   maxKw = MAX_RESIDENTIAL_KW,
+  minPanelsPerFace,
 }) {
   const included = (faces ?? []).filter((f) => f.included && f.vertices?.length >= 3)
   const google = googlePanelSize(insights)
@@ -265,7 +270,7 @@ export function layoutPanels({
         continue
       }
       if (removed.has(cell.id)) {
-        removedCells.push({ id: cell.id, faceId: cell.faceId, corners: cell.corners, center: cell.center })
+        removedCells.push({ id: cell.id, faceId: cell.faceId, corners: cell.corners, center: cell.center, row: cell.row, col: cell.col })
         continue
       }
       kept += 1
@@ -304,9 +309,38 @@ export function layoutPanels({
   }
   all = accepted
 
-  const available = all.length
-  const maxByKw = maxKw > 0 ? Math.floor((maxKw * 1000) / moduleWatts + 1e-9) : Infinity
+  // Panels go on in whole blocks: no face gets fewer than `minPer` panels from the
+  // auto-fill (faces you edited by hand are left as you made them).
   const wanted = Math.max(0, Math.round(Number(panelCount) || 0))
+  const maxByKw = maxKw > 0 ? Math.floor((maxKw * 1000) / moduleWatts + 1e-9) : Infinity
+  const pinnedCells = all.filter((c) => pinned.has(c.id))
+  const byFace = new Map(faceStats.map((s) => [s.faceId, { elig: [], removed: [], pinned: 0, pinnedCells: [] }]))
+  for (const c of all) {
+    const f = byFace.get(c.faceId)
+    if (pinned.has(c.id)) {
+      f.pinned += 1
+      f.pinnedCells.push(c)
+    }
+    else f.elig.push(c)
+  }
+  for (const r of removedCells) byFace.get(r.faceId)?.removed.push(r)
+  const manual = (f) => f.removed.length > 0 || f.pinned > 0
+  const eligibleTotal = (min) =>
+    pinnedCells.length + [...byFace.values()].reduce((t, f) => t + (manual(f) || f.elig.length >= min ? f.elig.length : 0), 0)
+  const explicitMin = Math.round(Number(minPanelsPerFace) || 0) > 0 ? Math.round(Number(minPanelsPerFace)) : null
+  let minPer = explicitMin ?? (wanted <= SMALL_SYSTEM_PANELS ? MIN_PANELS_PER_FACE_SMALL : MIN_PANELS_PER_FACE)
+  let available = eligibleTotal(explicitMin ?? MIN_PANELS_PER_FACE)
+  if (available < wanted && minPer < (explicitMin ?? MIN_PANELS_PER_FACE)) available = eligibleTotal(minPer)
+  if (available === 0 && all.length > 0) {
+    minPer = 1
+    available = all.length
+    notes.push('Only small roof areas are available, so panels sit in small groups.')
+  }
+  const smallFaces = faceStats.filter((s) => {
+    const f = byFace.get(s.faceId)
+    return !manual(f) && f.elig.length > 0 && f.elig.length < minPer
+  })
+
   let count = Math.min(wanted, available)
   let capped = false
   if (count > maxByKw) {
@@ -317,13 +351,61 @@ export function layoutPanels({
   if (blockedByObstacles) notes.push(`${blockedByObstacles} spot${blockedByObstacles === 1 ? '' : 's'} left clear around no-go areas.`)
   if (overlapDropped) notes.push(`${overlapDropped} spot${overlapDropped === 1 ? '' : 's'} skipped where two faces overlap.`)
 
-  const candidates = all.map((c) => {
+  // Share the panels out: best faces first, whole groups only, then top up faces already in use.
+  const fixed = pinnedCells.slice(0, count)
+  const ranked = [...byFace.keys()].sort((a, b) => faceRank.get(a) - faceRank.get(b))
+  const share = (skip) => {
+    let left = count - fixed.length
+    const out = new Map()
+    for (const id of ranked) {
+      if (skip.has(id)) continue
+      const f = byFace.get(id)
+      const take = Math.min(f.elig.length, left)
+      if (take <= 0 || take < (manual(f) ? 1 : minPer)) continue
+      out.set(id, take)
+      left -= take
+    }
+    for (const id of ranked) {
+      if (left <= 0 || !out.has(id)) continue
+      const extra = Math.min(byFace.get(id).elig.length - out.get(id), left)
+      out.set(id, out.get(id) + extra)
+      left -= extra
+    }
+    return { alloc: out, left }
+  }
+  // If a leftover is too small for any face, try leaving one face out so the rest fits in whole groups.
+  let plan = share(new Set())
+  if (plan.left > 0) {
+    for (const id of [...plan.alloc.keys()].reverse()) {
+      if (manual(byFace.get(id))) continue
+      const alt = share(new Set([id]))
+      if (alt.left < plan.left) plan = alt
+      if (plan.left === 0) break
+    }
+  }
+  const { alloc } = plan
+  const remaining = plan.left
+  if (remaining > 0) {
+    notes.push(
+      `${remaining} panel${remaining === 1 ? '' : 's'} fewer than asked, so no roof face is left with fewer than ${minPer} panels.`,
+    )
+    count -= remaining
+  }
+  const chosen = [...fixed]
+  for (const id of ranked) {
+    if (!alloc.has(id)) continue
+    const f = byFace.get(id)
+    chosen.push(...chooseBlock(f.elig, [...f.removed, ...f.pinnedCells], alloc.get(id)))
+  }
+  const chosenIds = new Set(chosen.map((c) => c.id))
+  const strip = (c) => {
     const out = { ...c }
     delete out.geom
     delete out.faceMean
     return out
-  })
-  const panels = candidates.slice(0, count)
+  }
+  const panels = chosen.map(strip)
+  const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
   const sources = new Set(panels.map((p) => p.source))
   return {
     panels,
@@ -340,6 +422,8 @@ export function layoutPanels({
     notes,
     blockedByObstacles,
     removedCells,
+    minPanelsPerFace: minPer,
+    smallFaces: smallFaces.map((f) => f.label ?? f.faceId),
   }
 }
 
@@ -359,10 +443,64 @@ export function snapToCell(candidates, latLng, { exclude = [], maxM = MAX_ADDED_
 }
 
 /**
+ * Pick `n` spots on one face as one tidy block: full rows of the same columns,
+ * from the gutter up, with at most one shorter last row. Spots you removed by
+ * hand still count as part of the shape (so one removal does not reshuffle the
+ * face) but never get a panel; so do panels you placed by hand.
+ */
+export function chooseBlock(eligible, removed = [], n) {
+  if (n <= 0) return []
+  if (n >= eligible.length) return [...eligible]
+  const grid = new Map()
+  for (const c of eligible) grid.set(`${c.row}:${c.col}`, c)
+  for (const r of removed) if (!grid.has(`${r.row}:${r.col}`)) grid.set(`${r.row}:${r.col}`, { ...r, removed: true })
+  const want = n + removed.length
+  const rows = [...new Set([...grid.values()].map((c) => c.row))].sort((a, b) => a - b)
+  const cols = [...new Set([...grid.values()].map((c) => c.col))].sort((a, b) => a - b)
+  const top = Math.max(...eligible.map((c) => c.yearlyAcKwh || 0), 1)
+  let best = null
+  for (const r0 of rows) {
+    for (const c0 of cols) {
+      for (let wd = 1; grid.has(`${r0}:${c0 + wd - 1}`); wd += 1) {
+        const nr = Math.ceil(want / wd)
+        const pick = []
+        let ok = true
+        for (let i = 0; i < nr && ok; i += 1) {
+          const m = i === nr - 1 ? want - wd * (nr - 1) : wd
+          for (let j = 0; j < m; j += 1) {
+            const c = grid.get(`${r0 + i}:${c0 + j}`)
+            if (!c) {
+              ok = false
+              break
+            }
+            pick.push(c)
+          }
+        }
+        if (!ok) continue
+        const real = pick.filter((c) => !c.removed)
+        const yieldFrac = real.reduce((t, c) => t + (c.yearlyAcKwh || 0), 0) / Math.max(real.length, 1) / top
+        const cost =
+          (want % wd ? 2 : 0) + (wd === 1 && want > 2 ? 3 : 0) + nr * 0.25 + (r0 - rows[0]) * 0.5 - yieldFrac * 10
+        if (!best || cost < best.cost - 1e-9) best = { cost, real }
+      }
+    }
+  }
+  // Fall back to row by row from the gutter if no single block fits.
+  const rowMajor = [...eligible].sort((a, b) => a.row - b.row || a.col - b.col)
+  const out = best ? best.real.slice(0, n) : []
+  const have = new Set(out.map((c) => c.id))
+  for (const c of rowMajor) {
+    if (out.length >= n) break
+    if (!have.has(c.id)) out.push(c)
+  }
+  return out
+}
+
+/**
  * Final checks on a laid-out design: every panel inside its face with the
  * setback, no two panels overlapping, nothing on a no-go area.
  */
-export function validateLayout(layout, faces, { setbackM = ROOF_EDGE_SETBACK_M, obstacles = [] } = {}) {
+export function validateLayout(layout, faces, { setbackM = ROOF_EDGE_SETBACK_M, obstacles = [], minPanelsPerFace } = {}) {
   const issues = []
   const byId = new Map((faces ?? []).map((f) => [f.id, f]))
   const frames = new Map()
@@ -396,6 +534,18 @@ export function validateLayout(layout, faces, { setbackM = ROOF_EDGE_SETBACK_M, 
     const obs = (obstacles ?? []).filter((o) => o?.vertices?.length >= 3).map((o) => asPoly(origin, o.vertices))
     const onObstacle = geo.filter((g) => obs.some((ob) => polygonsOverlap(g.xy, ob))).length
     if (onObstacle) issues.push({ level: 'error', message: `${onObstacle} panel${onObstacle === 1 ? '' : 's'} sit on a no-go area.` })
+  }
+  const min = minPanelsPerFace ?? layout?.minPanelsPerFace ?? MIN_PANELS_PER_FACE
+  const perFace = new Map()
+  for (const p of panels) perFace.set(p.faceId, (perFace.get(p.faceId) ?? 0) + 1)
+  for (const [faceId, n] of perFace) {
+    if (n < min) {
+      const label = byId.get(faceId)?.label ?? faceId
+      issues.push({
+        level: 'warning',
+        message: `${label} has only ${n} panel${n === 1 ? '' : 's'} - small groups are harder to wire; move ${n === 1 ? 'it' : 'them'} to a bigger group or add more.`,
+      })
+    }
   }
   return { ok: !issues.some((i) => i.level === 'error'), issues }
 }

@@ -66,6 +66,9 @@ export const ROOF_EDGE_SETBACK_M = 0.4 // [ASSUMPTION] keep panels this far insi
 export const OBSTACLE_CLEARANCE_M = 0.3 // [ASSUMPTION] keep panels this far from vents, skylights, etc.
 export const DEFAULT_PANEL_ORIENTATION = 'portrait' // long side up the roof
 export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the nearest grid spot within this distance
+export const MIN_PANELS_PER_FACE = 4 // [ASSUMPTION] auto-fill never leaves fewer than this on a face (no odd singles)
+export const MIN_PANELS_PER_FACE_SMALL = 2 // ...or this for a tiny system
+export const SMALL_SYSTEM_PANELS = 8 // a target of this many panels or fewer counts as tiny
 export const MIN_FACE_AREA_M2 = 4 // faces smaller than this are not worth a panel row
 export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] same as Wattsight (check DNSP)
 
