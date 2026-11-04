@@ -14,6 +14,7 @@ import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
 import { toLocal } from './lib/geo'
+import { flagNonRoofFaces } from './lib/nonRoof'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
@@ -276,6 +277,9 @@ function App() {
       }
       if (lockSeq.current !== seq) return
 
+      faces = flagNonRoofFaces(faces, response)
+      const flagged = faces.filter((f) => f.nonRoofLikely).length
+      if (flagged) traceNote += ` ${flagged} look${flagged === 1 ? 's' : ''} like a verandah or not roof, so ${flagged === 1 ? 'it is' : 'they are'} unticked.`
       actions.setRoofFaces(faces)
       mapRef.current?.fitToFaces(faces)
       setStatus({ label: 'Roof loaded', tone: 'success' })

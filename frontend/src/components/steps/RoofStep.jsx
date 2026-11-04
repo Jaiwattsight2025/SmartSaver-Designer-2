@@ -37,6 +37,16 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
                     : 'Outline: rough - please adjust'}
             </span>
           )}
+          {face.nonRoofLikely && (
+            <span className="outline-badge low non-roof" title={(face.nonRoofReasons ?? []).join('; ')}>
+              Possibly verandah/not roof
+            </span>
+          )}
+          {face.nonRoofLikely && (
+            <small className="non-roof-why">
+              Left out: {(face.nonRoofReasons ?? []).join(', ')}. Tick it if it really is roof you want panels on.
+            </small>
+          )}
           {selected && <small>Drag the white corner dots on the map to match the roof edges.</small>}
         </div>
       )}

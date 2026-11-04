@@ -59,13 +59,50 @@ export function traceFacesFromLayers(insights, layers) {
   const segs = segmentsForDsm(insights, origin)
   if (!segs.length) return null
   const out = roofFacesFromDsm(raster, segs)
+  const bySeg = new Map(segs.map((s) => [s.index, s]))
   return {
     ...out,
-    faces: out.faces.map((f) => ({
-      ...f,
-      vertices: f.polygon.map((p) => fromLocal(origin, p)),
-    })),
+    faces: out.faces.map((f) => {
+      const seg = bySeg.get(f.index)
+      const ground = localGroundM(raster, f.polygon)
+      return {
+        ...f,
+        metrics: {
+          ...f.metrics,
+          heightM: seg?.heightM ?? null,
+          heightAboveGroundM: ground !== null && seg?.heightM ? seg.heightM - ground : null,
+        },
+        vertices: f.polygon.map((p) => fromLocal(origin, p)),
+      }
+    }),
   }
+}
+
+/**
+ * Ground height near a face: a low percentile of the off-building DSM pixels
+ * within 3 m of the face (low, so trees and fences do not count). Null if
+ * there is too little ground in view.
+ */
+export function localGroundM(raster, polygon, { marginM = 3, pct = 0.15, minPixels = 30 } = {}) {
+  if (!polygon?.length) return null
+  const cx = polygon.reduce((t, p) => t + p.x, 0) / polygon.length
+  const cy = polygon.reduce((t, p) => t + p.y, 0) / polygon.length
+  const r = Math.max(...polygon.map((p) => Math.hypot(p.x - cx, p.y - cy))) + marginM
+  const { frame, width, height, dsm, mask } = raster
+  const c = frame.toPixel(cx, cy)
+  const span = Math.ceil(r / frame.pixelSize) + 1
+  const vals = []
+  for (let v = Math.max(0, Math.floor(c.v - span)); v < Math.min(height, Math.ceil(c.v + span)); v += 1) {
+    for (let u = Math.max(0, Math.floor(c.u - span)); u < Math.min(width, Math.ceil(c.u + span)); u += 1) {
+      const i = v * width + u
+      if (mask[i] || !Number.isFinite(dsm[i])) continue
+      const p = frame.toLocal(u + 0.5, v + 0.5)
+      if (Math.hypot(p.x - cx, p.y - cy) <= r) vals.push(dsm[i])
+    }
+  }
+  if (vals.length < minPixels) return null
+  vals.sort((a, b) => a - b)
+  return vals[Math.floor(vals.length * pct)]
 }
 
 /**

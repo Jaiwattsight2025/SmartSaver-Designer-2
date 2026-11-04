@@ -1,0 +1,86 @@
+/*
+ * Spot roof faces that are probably not main roof: verandahs, pergolas,
+ * carports, awnings or a strip of something else picked up next to the house.
+ * They are flagged "Possibly verandah/not roof", left unticked and so kept out
+ * of the auto-fill until the user ticks them.
+ *
+ * A face is flagged when at least two of these hold:
+ *   - low: its plane sits less than 2.6 m above the local ground (3D data), or
+ *     1 m or more below the main roof,
+ *   - flat: pitch under 12 degrees,
+ *   - narrow: under 1.8 m across at its narrowest,
+ *   - weak and small: the outline is not high confidence and it is under 15 m².
+ * Being both low above ground and well below the main roof counts once.
+ */
+import { toLatLng, toLocal } from './geo'
+
+export const NON_ROOF_LABEL = 'Possibly verandah/not roof'
+const LOW_ABOVE_GROUND_M = 2.6 // [ASSUMPTION] a single-storey roof plane centre is usually 3 m+ above the ground
+const BELOW_MAIN_M = 1.0
+const FLAT_PITCH_DEG = 12
+const NARROW_M = 1.8
+const SMALL_M2 = 15
+
+/** Narrowest width of a face outline (metres, rotating callipers over its edges). */
+export function minWidthM(vertices) {
+  const pts = (vertices ?? []).map(toLatLng).filter(Boolean)
+  if (pts.length < 3) return 0
+  const xy = pts.map((p) => toLocal(pts[0], p))
+  let best = Infinity
+  for (let i = 0; i < xy.length; i += 1) {
+    const a = xy[i]
+    const b = xy[(i + 1) % xy.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (len < 0.3) continue
+    const n = { x: -(b.y - a.y) / len, y: (b.x - a.x) / len }
+    const pr = xy.map((p) => p.x * n.x + p.y * n.y)
+    best = Math.min(best, Math.max(...pr) - Math.min(...pr))
+  }
+  return Number.isFinite(best) ? best : 0
+}
+
+function weightedMedian(items) {
+  const s = items.filter((i) => Number.isFinite(i.v) && i.w > 0).sort((a, b) => a.v - b.v)
+  const total = s.reduce((t, i) => t + i.w, 0)
+  let acc = 0
+  for (const i of s) {
+    acc += i.w
+    if (acc >= total / 2) return i.v
+  }
+  return null
+}
+
+const planeHeight = (face, stats) =>
+  Number(face.dsmMetrics?.heightM ?? stats?.[face.segmentIndex]?.planeHeightAtCenterMeters) || null
+
+/** Reasons a face looks like it is not main roof (empty when it looks fine). */
+export function nonRoofReasons(face, { mainHeightM = null, stats = null } = {}) {
+  const reasons = []
+  const h = planeHeight(face, stats)
+  const hag = face.dsmMetrics?.heightAboveGroundM
+  if (Number.isFinite(hag) && hag < LOW_ABOVE_GROUND_M) reasons.push(`only ${hag.toFixed(1)} m above the ground`)
+  else if (h !== null && mainHeightM !== null && mainHeightM - h >= BELOW_MAIN_M)
+    reasons.push(`${(mainHeightM - h).toFixed(1)} m below the main roof`)
+  if ((Number(face.pitchDegrees) || 0) < FLAT_PITCH_DEG) reasons.push(`nearly flat (${face.pitchDegrees}°)`)
+  const w = minWidthM(face.vertices)
+  if (w > 0 && w < NARROW_M) reasons.push(`only ${w.toFixed(1)} m wide`)
+  if (face.outlineConfidence !== 'high' && (Number(face.areaSquareMetres) || 0) < SMALL_M2)
+    reasons.push('small, and the outline is not certain')
+  return reasons
+}
+
+/**
+ * Flag likely non-roof faces from Google's roof data (manual faces and faces
+ * the user has already edited are left alone). Flagged faces are unticked.
+ */
+export function flagNonRoofFaces(faces, insights) {
+  const stats = insights?.solarPotential?.roofSegmentStats ?? null
+  const big = (faces ?? []).filter((f) => (Number(f.areaSquareMetres) || 0) >= SMALL_M2)
+  const mainHeightM = weightedMedian(big.map((f) => ({ v: planeHeight(f, stats), w: Number(f.areaSquareMetres) || 0 })))
+  return (faces ?? []).map((f) => {
+    if (f.source !== 'solar-api' || f.outlineEdited) return f
+    const reasons = nonRoofReasons(f, { mainHeightM, stats })
+    if (reasons.length < 2) return f.nonRoofLikely ? { ...f, nonRoofLikely: false, nonRoofReasons: [] } : f
+    return { ...f, nonRoofLikely: true, nonRoofReasons: reasons, included: false }
+  })
+}

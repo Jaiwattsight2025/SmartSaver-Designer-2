@@ -1414,3 +1414,13 @@ details.solar-panel summary::-webkit-details-marker {
     min-height: 520px;
   }
 }
+
+.outline-badge.non-roof {
+  margin-left: 6px;
+}
+
+.non-roof-why {
+  display: block;
+  margin-top: 4px;
+  color: #9a3412;
+}
