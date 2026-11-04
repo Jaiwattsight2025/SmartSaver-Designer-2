@@ -1,5 +1,21 @@
 # Changelog
 
+## [designer-v2] – 2026-11-05 – Milestone D2: roof outlines first, then panels
+
+- Roof faces now get a real outline estimate (rectangle / hip / valley / fit-to-Google-panels) instead of a hull
+  around Google's panel dots. Each face shows how sure we are (good / check corners / rough).
+- Select a face and drag its corner dots on the map (drag a middle dot to add a corner, right-click to delete one).
+  Pitch can be corrected per face. Reset outline puts back the estimate. Overlapping faces are flagged.
+- New "Confirm roof" step. Panels are only placed after the roof is confirmed; any roof change asks again.
+- New panel filler: 0.4 m setback from every edge (adjustable), straight rows from the gutter, portrait or
+  landscape, real module size per wattage, strict inside checks. Google data is only used to rank spots and for yield.
+- No-go areas (vents, skylights, aircon) with 0.3 m clearance.
+- Panel edit mode: click a panel to remove, click a blue outline to add, drag to move (snaps to the row).
+- Final checks: every panel inside its face with the setback, no overlaps, nothing on a no-go area, kW cap
+  (13.2 kW) and inverter limit (133%).
+- Known gaps: no DSM plane fit / building footprint yet (needs Google data layers + GeoTIFF parsing); outlines are
+  estimates until the customer checks them.
+
 ## [designer-v1] – 2026-11-04 – Milestone D1
 
 ### Added

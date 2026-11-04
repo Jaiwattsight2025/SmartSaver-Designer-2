@@ -4,8 +4,10 @@ React + Vite app that takes a customer from their power bill to a sized solar +
 battery system in six steps:
 
 1. **Property** – bill data (Wattsight link, Wattsight results `.json`, or typed in) and the address.
-2. **Roof** – roof faces from the Google Solar API, plus faces you trace by hand. Tick the ones to use.
-3. **Panels** – Google's panel spots on the ticked faces (grid fallback for traced faces); size defaults to the Wattsight `sol_kw`.
+2. **Roof** – estimated roof-face outlines from the Google Solar API, plus faces you trace by hand. Tick the ones to
+   use, drag corner dots to fix outlines, mark no-go areas, then **Confirm roof**.
+3. **Panels** – rows laid inside each confirmed outline (0.4 m setback, portrait/landscape, real module size); Google
+   data only ranks spots and gives yield. Edit mode: click to remove/add, drag to move. Size defaults to Wattsight `sol_kw`.
 4. **Battery & inverter** – suggested sizes (Wattsight `bat_kwh`), editable.
 5. **Output** – yearly and monthly generation, self-use vs export, bill before/after.
 6. **Summary** – size, savings, placeholder price, payback; quote / shop links; print-to-PDF and JSON download.
