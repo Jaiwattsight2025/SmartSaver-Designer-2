@@ -14,6 +14,7 @@ import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
 import { toLocal } from './lib/geo'
+import { buildingMatchWarning, noCoverageMessage } from './lib/buildingMatch'
 import { flagNonRoofFaces } from './lib/nonRoof'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
@@ -263,6 +264,7 @@ function App() {
       setMapMessage('Tracing the roof edges from Google’s 3D roof data…')
       let faces = estimated
       let traceNote = ''
+      const matchNote = buildingMatchWarning(target, response)
       try {
         const layers = await getRoofLayers(response)
         const traced = traceFacesFromLayers(response, layers)
@@ -283,11 +285,11 @@ function App() {
       actions.setRoofFaces(faces)
       mapRef.current?.fitToFaces(faces)
       setStatus({ label: 'Roof loaded', tone: 'success' })
-      setMapMessage(`We found ${faces.length} roof faces.${traceNote} Press Next to check them.`)
+      setMapMessage(`We found ${faces.length} roof faces.${traceNote} Press Next to check them.${matchNote}`)
     } catch (error) {
       actions.setSolarError(error.details ?? { message: error.message })
       setStatus({ label: 'No roof data', tone: 'error' })
-      setMapMessage(`${error.message} You can trace your roof in step 2.`)
+      setMapMessage(`${noCoverageMessage(error)} You can trace your roof yourself in step 2: press Next, then "+ Trace a roof face".`)
     }
   }
 

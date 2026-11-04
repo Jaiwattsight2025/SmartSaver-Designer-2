@@ -134,6 +134,7 @@ export async function createMapController(container) {
       },
       panels: () => overlays.panels.filter((p) => p.get('ssdKind') === 'panel').map((p) => ({ id: p.get('ssdId'), ...centreOf(p) })),
       ghosts: () => overlays.panels.filter((p) => p.get('ssdKind') === 'ghost').map((p) => ({ id: p.get('ssdId'), ...centreOf(p) })),
+      centreOn: (ll) => map.setCenter(ll),
       editableFace: () => {
         const f = overlays.faces.find((p) => p.getEditable())
         return f ? f.getPath().getArray().map((ll) => ({ lat: ll.lat(), lng: ll.lng() })) : null
