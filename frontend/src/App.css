@@ -18,7 +18,8 @@
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -506,7 +507,7 @@ button:disabled {
 .metrics-strip {
   min-height: 88px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   border-top: 1px solid var(--line);
 }
 
@@ -805,4 +806,552 @@ button:disabled {
     margin-top:20px;
     color:#9aa5af;
     font-size:13px;
+}
+
+/* ---------- D1: designer steps ---------- */
+
+.control-stack select,
+.profile-form input,
+.profile-form select,
+.face-edit input,
+.face-edit select,
+.count-row input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.control-stack select:focus,
+.profile-form input:focus,
+.count-row input:focus {
+  outline: 2px solid var(--yellow-soft);
+  border-color: var(--yellow);
+}
+
+.control-stack input[type='range'] {
+  width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--yellow);
+}
+
+.hint {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 2px 0;
+  background: none;
+  color: var(--yellow);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.as-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.three-column-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.three-column-buttons button {
+  min-height: 34px;
+  font-size: 11px;
+}
+
+/* Bill data card */
+.profile-card {
+  padding: 12px;
+  border: 1px solid rgba(255, 196, 0, 0.35);
+  border-radius: 10px;
+  background: var(--yellow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.profile-card.empty {
+  border-style: dashed;
+  border-color: var(--line);
+  background: rgba(13, 17, 21, 0.48);
+}
+
+.profile-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.profile-card-heading span {
+  display: block;
+  color: var(--yellow);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.profile-card-heading strong {
+  font-size: 12px;
+}
+
+.profile-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 10px;
+}
+
+.profile-grid dt {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.profile-grid dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-grid em {
+  color: var(--yellow);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Roof faces */
+.roof-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.roof-totals > div,
+.big-figure {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(13, 17, 21, 0.48);
+}
+
+.roof-totals span,
+.big-figure span {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.roof-totals strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.big-figure strong {
+  display: block;
+  margin: 4px 0;
+  font-size: 22px;
+}
+
+.big-figure small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.big-figure.good strong {
+  color: var(--green);
+}
+
+.roof-face-card.included {
+  border-color: rgba(255, 196, 0, 0.55);
+}
+
+.face-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.face-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.face-toggle input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--yellow);
+}
+
+.face-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+
+.sun-pill {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.sun-pill.high {
+  background: rgba(101, 212, 135, 0.15);
+  color: var(--green);
+}
+
+.sun-pill.medium {
+  background: var(--yellow-soft);
+  color: var(--yellow);
+}
+
+.face-edit {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  align-items: end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.face-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.trace-box {
+  padding: 10px;
+  border: 1px solid var(--green);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.trace-box small {
+  color: var(--muted);
+}
+
+.count-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 6px;
+}
+
+.count-row input {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.count-row button {
+  min-height: 38px;
+  font-size: 18px;
+}
+
+/* Bottom bar */
+.metric-card.highlight strong {
+  color: var(--green);
+}
+
+/* Output / summary report over the map area */
+.map-stage.hidden-map .google-map {
+  visibility: hidden;
+}
+
+.report {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: auto;
+  padding: 22px 26px;
+  background: var(--surface);
+}
+
+.report h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.report h4 {
+  margin: 16px 0 8px;
+  color: var(--yellow);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.report p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.report-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.report-table td {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-table td:last-child {
+  text-align: right;
+  font-weight: 700;
+}
+
+.report-table tr.total td {
+  border-bottom: 0;
+  color: var(--green);
+  font-size: 14px;
+}
+
+.tag {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+}
+
+.placeholder-banner {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: rgba(230, 106, 106, 0.12);
+  color: #ffb3b3;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.monthly-chart {
+  margin: 0;
+}
+
+.monthly-chart svg {
+  width: 100%;
+  height: auto;
+}
+
+.monthly-chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.monthly-chart .axis {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.monthly-chart .bar-gen,
+.monthly-chart .key.gen {
+  fill: var(--yellow);
+  background: var(--yellow);
+}
+
+.monthly-chart .bar-load,
+.monthly-chart .key.load {
+  fill: #5b7fae;
+  background: #5b7fae;
+}
+
+.monthly-chart figcaption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.monthly-chart .key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 10px;
+  border-radius: 2px;
+}
+
+.print-only {
+  display: none;
+}
+
+details.solar-panel summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+details.solar-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (max-width: 1050px) {
+  .metrics-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  .metrics-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .report {
+    position: relative;
+    inset: auto;
+    min-height: 520px;
+  }
+
+  .map-stage.hidden-map .google-map {
+    display: none;
+  }
+
+  .report-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .metrics-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .report {
+    padding: 16px;
+  }
+}
+
+/* Print / Save as PDF: only the design summary */
+@media print {
+  body,
+  .app-shell {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .topbar,
+  .step-sidebar,
+  .workspace-toolbar,
+  .control-panel,
+  .stage-header,
+  .metrics-strip,
+  .google-map,
+  .map-guidance {
+    display: none !important;
+  }
+
+  .main-layout,
+  .designer-grid,
+  .workspace {
+    display: block !important;
+    padding: 0 !important;
+  }
+
+  .design-stage,
+  .map-stage {
+    min-height: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    overflow: visible !important;
+  }
+
+  .report {
+    position: static !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .report p,
+  .hint {
+    color: #444 !important;
+  }
+
+  .report h4 {
+    color: #8a6a00 !important;
+  }
+
+  .report-table td {
+    border-color: #ccc !important;
+  }
+
+  .report-table tr.total td {
+    color: #11702f !important;
+  }
+
+  .placeholder-banner {
+    color: #9b1c1c !important;
+    background: #fdecec !important;
+  }
+
+  .print-only {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
 }

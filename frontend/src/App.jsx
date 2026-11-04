@@ -1,94 +1,109 @@
-
-import RoofFaceList from "./components/RoofFaceList";
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
+import EnergyProfileCard from './components/EnergyProfileCard'
+import RoofStep from './components/steps/RoofStep'
+import PanelsStep from './components/steps/PanelsStep'
+import BatteryStep from './components/steps/BatteryStep'
+import OutputStep, { OutputReport } from './components/steps/OutputStep'
+import SummaryStep, { SummaryReport } from './components/steps/SummaryStep'
 import { getBuildingInsights, summariseBuildingInsights } from './services/solarApi'
 import { useProject } from './context/ProjectContext'
+import { useDesign } from './hooks/useDesign'
+import { facesFromBuildingInsights } from './lib/roofFaces'
+import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
 
 const steps = [
-  { id: 'property', number: 1, label: 'Property', summary: 'Find and lock the site' },
-  { id: 'roof', number: 2, label: 'Roof', summary: 'Confirm roof geometry' },
-  { id: 'panels', number: 3, label: 'Panels', summary: 'Place and size the PV array' },
-  { id: 'battery', number: 4, label: 'Battery & inverter', summary: 'Configure storage and conversion' },
-  { id: 'output', number: 5, label: 'Output', summary: 'Review irradiance and generation' },
-  { id: 'summary', number: 6, label: 'Summary', summary: 'Review the completed design' },
+  { id: 'property', number: 1, label: 'Property', summary: 'Your bill and address' },
+  { id: 'roof', number: 2, label: 'Roof', summary: 'Pick the roof faces' },
+  { id: 'panels', number: 3, label: 'Panels', summary: 'Choose how many panels' },
+  { id: 'battery', number: 4, label: 'Battery & inverter', summary: 'Storage and conversion' },
+  { id: 'output', number: 5, label: 'Output', summary: 'Generation and savings' },
+  { id: 'summary', number: 6, label: 'Summary', summary: 'Price and next steps' },
 ]
 
 const cards = {
   property: {
     eyebrow: 'STEP 1',
     title: 'Find your property',
-    description:
-      'Search for the site address, position the building and lock the map before starting the roof design.',
+    description: 'Check your bill data, search for your address, then lock the map on your house.',
   },
   roof: {
     eyebrow: 'STEP 2',
     title: 'Confirm the roof',
-    description:
-      'Load Solar API data, review the roof outline and faces, then accept the roof model.',
+    description: 'We load your roof faces from Google. Tick the faces you want panels on, or trace your own.',
   },
   panels: {
     eyebrow: 'STEP 3',
     title: 'Place solar panels',
-    description:
-      'Select a module, apply setbacks and fill the accepted roof faces.',
+    description: 'Panels go on the sunniest spots first. Change the panel size and count to suit.',
   },
   battery: {
     eyebrow: 'STEP 4',
-    title: 'Configure battery and inverter',
-    description:
-      'Choose the inverter, battery range and storage capacity, then review compatibility.',
+    title: 'Battery and inverter',
+    description: 'We suggest sizes from your bill. Change them and see the effect on savings.',
   },
   output: {
     eyebrow: 'STEP 5',
-    title: 'Review output and irradiance',
-    description:
-      'Review annual and monthly irradiance, estimated generation and battery charging opportunity.',
+    title: 'Output and savings',
+    description: 'How much power your system makes each month and what it does to your bill.',
   },
   summary: {
     eyebrow: 'STEP 6',
     title: 'Design summary',
-    description:
-      'Review the completed solar and battery design before exporting the summary.',
+    description: 'Your system, savings and an indicative price. Get a quote or save the summary.',
   },
 }
+
+const MAP_STEPS = ['property', 'roof', 'panels', 'battery']
 
 function App() {
   const [activeStep, setActiveStep] = useState('property')
   const [addressInput, setAddressInput] = useState('')
   const [status, setStatus] = useState({ label: 'Loading map', tone: 'neutral' })
   const [mapMessage, setMapMessage] = useState('Enter a property address.')
+  const [mapController, setMapController] = useState(null)
   const mapRef = useRef(null)
 
-  const { building, actions } = useProject()
-  const {
-    formattedAddress,
-    location: coordinates,
-    mapType,
-    propertyFound,
-    mapLocked,
-    solar,
-  } = building
+  const { building, energyProfile, actions } = useProject()
+  const { design } = useDesign()
+  const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, solar, roofFaces, selectedRoofFaceId } =
+    building
 
-
-  const activeIndex = useMemo(
-    () => steps.findIndex((step) => step.id === activeStep),
-    [activeStep],
-  )
-
+  const activeIndex = useMemo(() => steps.findIndex((step) => step.id === activeStep), [activeStep])
   const activeCard = cards[activeStep]
 
+  // Draw roof faces and panels on the map for the current step.
+  useEffect(() => {
+    const map = mapController
+    if (!map) return
+    const showFaces = activeStep !== 'property' || roofFaces.length > 0
+    map.showRoofFaces(showFaces ? roofFaces : [], {
+      selectedId: activeStep === 'roof' ? selectedRoofFaceId : null,
+      dim: activeStep !== 'roof',
+      onSelect: activeStep === 'roof' ? actions.selectRoofFace : undefined,
+    })
+    map.showPanels(activeStep === 'property' || activeStep === 'roof' ? [] : design.layout.panels)
+  }, [mapController, activeStep, roofFaces, selectedRoofFaceId, design.layout.panels, actions])
+
+  // What the pill on top of the map says on steps 2-4 (step 1 uses mapMessage).
+  const stepGuidance = mapLocked
+    ? {
+        roof: 'Yellow faces are in use. Click a face to select it.',
+        panels: `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
+        battery: `${fmtKw(design.layout.dcKw)} solar${design.batteryKwh > 0 ? ` + ${design.batteryKwh} kWh battery` : ''}`,
+      }[activeStep]
+    : null
+
   const goToStep = (direction) => {
-    const nextIndex = Math.min(
-      Math.max(activeIndex + direction, 0),
-      steps.length - 1,
-    )
+    const nextIndex = Math.min(Math.max(activeIndex + direction, 0), steps.length - 1)
     setActiveStep(steps[nextIndex].id)
+    window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
 
   const handleMapReady = (controller) => {
     mapRef.current = controller
+    setMapController(controller)
     setStatus({ label: 'Map ready', tone: 'success' })
     setMapMessage('Enter a property address.')
   }
@@ -119,7 +134,7 @@ function App() {
       setAddressInput(result.formattedAddress)
       actions.setBuildingSearch(result)
       setStatus({ label: 'Property found', tone: 'success' })
-      setMapMessage('Position the building, then lock the property.')
+      setMapMessage('Centre your house on the map, then lock the property.')
     } catch (error) {
       setStatus({ label: 'Address not found', tone: 'error' })
       setMapMessage(error.message)
@@ -129,25 +144,29 @@ function App() {
   const lockProperty = async () => {
     if (!mapRef.current || !propertyFound || !coordinates) return
 
+    // Use the house the customer centred on the map, not just the geocoded point.
+    const centre = mapRef.current.getMap().getCenter()
+    const target = centre ? { lat: centre.lat(), lng: centre.lng() } : coordinates
+
     mapRef.current.setInteractive(false)
     actions.setMapLocked(true)
     actions.setSolarConnecting()
-    setStatus({ label: 'Testing Solar API', tone: 'neutral' })
-    setMapMessage('Property locked. Retrieving building insights…')
+    setStatus({ label: 'Loading roof', tone: 'neutral' })
+    setMapMessage('Property locked. Loading your roof from Google…')
 
     try {
-      const response = await getBuildingInsights(coordinates)
+      const response = await getBuildingInsights(target)
       const summary = summariseBuildingInsights(response)
+      const faces = facesFromBuildingInsights(response)
 
       actions.setSolarSuccess({ response, summary })
-      setStatus({ label: 'Solar API connected', tone: 'success' })
-      setMapMessage(
-        `Solar API connected. ${summary.roofSegments} roof segments were returned.`,
-      )
+      actions.setRoofFaces(faces)
+      setStatus({ label: 'Roof loaded', tone: 'success' })
+      setMapMessage(`We found ${faces.length} roof faces. Press Next to check them.`)
     } catch (error) {
       actions.setSolarError(error.details ?? { message: error.message })
-      setStatus({ label: 'Solar API unavailable', tone: 'error' })
-      setMapMessage(error.message)
+      setStatus({ label: 'No roof data', tone: 'error' })
+      setMapMessage(`${error.message} You can trace your roof in step 2.`)
     }
   }
 
@@ -155,8 +174,10 @@ function App() {
     if (!mapRef.current) return
 
     mapRef.current.setInteractive(true)
+    mapRef.current.clearOverlays()
     actions.setMapLocked(false)
     actions.resetSolar()
+    actions.setRoofFaces([])
     setStatus({ label: 'Map unlocked', tone: 'neutral' })
     setMapMessage('Reposition the building, then lock the property again.')
   }
@@ -175,11 +196,15 @@ function App() {
     mapRef.current?.reset()
   }
 
+  const showReport = !MAP_STEPS.includes(activeStep)
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">SS</div>
+          <div className="brand-mark" aria-hidden="true">
+            SS
+          </div>
           <div>
             <div className="brand-name">SMARTSAVER ENERGY</div>
             <h1>Solar + Battery Designer</h1>
@@ -187,7 +212,7 @@ function App() {
         </div>
 
         <div className="status-cluster">
-          <span className="version-pill">M5 · COMMIT 2</span>
+          <span className="version-pill">v1.0 · D1</span>
           <span className={`status-pill ${status.tone}`}>
             <span className="status-dot" />
             {status.label}
@@ -225,8 +250,12 @@ function App() {
           </nav>
 
           <div className="sidebar-note">
-            <strong>Fixed v1.0 scope</strong>
-            <p>Property, roof, panels, battery and inverter, output, then summary.</p>
+            <strong>{energyProfile?.profile ? 'Using your bill data' : 'No bill data yet'}</strong>
+            <p>
+              {energyProfile?.profile
+                ? `${fmtKwh(energyProfile.profile.annualKwh)} a year at ${(energyProfile.profile.importRate * 100).toFixed(1)}c/kWh.`
+                : 'Add it in step 1 to see your savings.'}
+            </p>
           </div>
         </aside>
 
@@ -242,9 +271,6 @@ function App() {
               <button type="button" className="secondary-button" onClick={newDesign}>
                 New design
               </button>
-              <button type="button" className="secondary-button" disabled>
-                Save draft
-              </button>
             </div>
           </div>
 
@@ -257,6 +283,8 @@ function App() {
 
               {activeStep === 'property' && (
                 <div className="control-stack">
+                  <EnergyProfileCard />
+
                   <label htmlFor="address">Property address</label>
                   <input
                     id="address"
@@ -270,12 +298,7 @@ function App() {
                     }}
                   />
 
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={findProperty}
-                    disabled={mapLocked}
-                  >
+                  <button type="button" className="primary-button" onClick={findProperty} disabled={mapLocked}>
                     Find property
                   </button>
 
@@ -297,27 +320,16 @@ function App() {
                   </div>
 
                   {!mapLocked ? (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={!propertyFound}
-                      onClick={lockProperty}
-                    >
+                    <button type="button" className="secondary-button" disabled={!propertyFound} onClick={lockProperty}>
                       Lock property
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={repositionProperty}
-                    >
+                    <button type="button" className="secondary-button" onClick={repositionProperty}>
                       Reposition property
                     </button>
                   )}
 
-                  <div className={`info-box ${status.tone === 'error' ? 'error' : ''}`}>
-                    {mapMessage}
-                  </div>
+                  <div className={`info-box ${status.tone === 'error' ? 'error' : ''}`}>{mapMessage}</div>
 
                   {coordinates && (
                     <div className="property-result">
@@ -329,11 +341,11 @@ function App() {
                     </div>
                   )}
 
-                  <div className="solar-panel">
-                    <div className="solar-panel-heading">
-                      <span>SOLAR API</span>
+                  <details className="solar-panel">
+                    <summary className="solar-panel-heading">
+                      <span>GOOGLE ROOF DATA</span>
                       <strong>{solar.status}</strong>
-                    </div>
+                    </summary>
 
                     <div className="solar-metrics">
                       <div>
@@ -346,11 +358,7 @@ function App() {
                       </div>
                       <div>
                         <span>Whole roof area</span>
-                        <strong>
-                          {solar.summary
-                            ? `${solar.summary.wholeRoofArea.toFixed(1)} m²`
-                            : '—'}
-                        </strong>
+                        <strong>{solar.summary ? `${solar.summary.wholeRoofArea.toFixed(1)} m²` : '—'}</strong>
                       </div>
                       <div>
                         <span>Maximum panels</span>
@@ -376,33 +384,20 @@ function App() {
                     </button>
 
                     {solar.showDiagnostics && solar.response && (
-                      <pre className="diagnostic-response">
-                        {JSON.stringify(solar.response, null, 2)}
-                      </pre>
+                      <pre className="diagnostic-response">{JSON.stringify(solar.response, null, 2)}</pre>
                     )}
-                  </div>
-
-                  <RoofFaceList />
+                  </details>
                 </div>
               )}
 
-              {activeStep !== 'property' && (
-                <div className="placeholder-controls">
-                  <div className="placeholder-icon">{activeIndex + 1}</div>
-                  <strong>{activeCard.title}</strong>
-                  <p>
-                    This section remains locked to its dedicated milestone.
-                  </p>
-                </div>
-              )}
+              {activeStep === 'roof' && <RoofStep map={mapController} onGoToProperty={() => setActiveStep('property')} />}
+              {activeStep === 'panels' && <PanelsStep onGoToRoof={() => setActiveStep('roof')} />}
+              {activeStep === 'battery' && <BatteryStep />}
+              {activeStep === 'output' && <OutputStep />}
+              {activeStep === 'summary' && <SummaryStep />}
 
               <div className="panel-navigation">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => goToStep(-1)}
-                  disabled={activeIndex === 0}
-                >
+                <button type="button" className="secondary-button" onClick={() => goToStep(-1)} disabled={activeIndex === 0}>
                   Previous
                 </button>
                 <button
@@ -420,7 +415,7 @@ function App() {
               <div className="stage-header">
                 <div>
                   <span>DESIGN CANVAS</span>
-                  <strong>Property and system workspace</strong>
+                  <strong>{showReport ? (activeStep === 'output' ? 'Output and savings' : 'Your design') : 'Property and system workspace'}</strong>
                 </div>
                 <div className="stage-coordinates">
                   {coordinates
@@ -429,36 +424,33 @@ function App() {
                 </div>
               </div>
 
-              <div className="map-stage">
-                <MapCanvas
-                  mapType={mapType}
-                  locked={mapLocked}
-                  onReady={handleMapReady}
-                  onError={handleMapError}
-                />
-                <div className="map-guidance">{mapMessage}</div>
+              <div className={`map-stage ${showReport ? 'hidden-map' : ''}`}>
+                <MapCanvas mapType={mapType} locked={mapLocked} onReady={handleMapReady} onError={handleMapError} />
+                {!showReport && <div className="map-guidance">{stepGuidance ?? mapMessage}</div>}
+                {activeStep === 'output' && <OutputReport />}
+                {activeStep === 'summary' && <SummaryReport />}
               </div>
 
               <div className="metrics-strip">
                 <div className="metric-card">
-                  <span>Roof area</span>
-                  <strong>
-                    {solar.summary
-                      ? `${solar.summary.wholeRoofArea.toFixed(1)} m²`
-                      : '—'}
-                  </strong>
+                  <span>Roof in use</span>
+                  <strong>{design.roof.includedCount ? `${design.roof.includedAreaM2.toFixed(0)} m²` : '—'}</strong>
                 </div>
                 <div className="metric-card">
-                  <span>PV capacity</span>
-                  <strong>—</strong>
+                  <span>Solar size</span>
+                  <strong>{design.layout.count ? fmtKw(design.layout.dcKw) : '—'}</strong>
                 </div>
                 <div className="metric-card">
-                  <span>Battery capacity</span>
-                  <strong>—</strong>
+                  <span>Battery</span>
+                  <strong>{design.batteryKwh > 0 ? `${design.batteryKwh} kWh` : 'None'}</strong>
                 </div>
                 <div className="metric-card">
-                  <span>Annual output</span>
-                  <strong>—</strong>
+                  <span>Yearly output</span>
+                  <strong>{design.layout.count ? fmtKwh(design.annualGenKwh) : '—'}</strong>
+                </div>
+                <div className="metric-card highlight">
+                  <span>Yearly saving</span>
+                  <strong>{design.bill && design.layout.count ? fmtMoney(design.bill.savingAnnual) : '—'}</strong>
                 </div>
               </div>
             </section>
