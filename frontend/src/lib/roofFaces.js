@@ -7,7 +7,8 @@
  */
 import { MIN_FACE_AREA_M2 } from '../config/designerConfig'
 import { orientationFromAzimuth } from '../models/RoofFace'
-import { centroid, planAreaM2, toLatLng } from './geo'
+import { centroid, planAreaM2, toLatLng, toLocal } from './geo'
+import { overlapArea } from './polygon'
 import { estimateSegmentOutline } from './roofOutline'
 
 export function sunExposure(medianSunshine) {
@@ -143,4 +144,43 @@ export function roofTotals(faces) {
     includedCount: inc.length,
     includedAreaM2: inc.reduce((s, f) => s + (f.areaSquareMetres || 0), 0),
   }
+}
+
+/** Changes to apply when the customer drags a face's corners. */
+export function editedOutline(face, vertices) {
+  const plan = planAreaM2(vertices)
+  const cosP = Math.cos(((Number(face.pitchDegrees) || 0) * Math.PI) / 180)
+  return {
+    vertices,
+    center: centroid(vertices),
+    groundAreaSquareMetres: Math.round(plan * 10) / 10,
+    areaSquareMetres: Math.round((plan / cosP) * 10) / 10,
+    outlineEdited: true,
+    outlineConfidence: 'high',
+    originalVertices: face.originalVertices ?? face.vertices,
+    originalConfidence: face.originalConfidence ?? face.outlineConfidence,
+  }
+}
+
+/** Changes to apply when the customer corrects a face's pitch (tilt). */
+export function editedPitch(face, pitchDegrees) {
+  const pitch = Math.min(Math.max(Number(pitchDegrees) || 0, 0), 60)
+  const plan = planAreaM2(face.vertices)
+  return { pitchDegrees: pitch, areaSquareMetres: Math.round((plan / Math.cos((pitch * Math.PI) / 180)) * 10) / 10 }
+}
+
+/** Pairs of included faces whose outlines overlap by more than `minM2` (estimated outlines can). */
+export function faceOverlaps(faces, minM2 = 1) {
+  const inc = (faces ?? []).filter((f) => f.included && f.vertices?.length >= 3)
+  if (inc.length < 2) return []
+  const origin = toLatLng(inc[0].center) ?? inc[0].vertices[0]
+  const polys = inc.map((f) => f.vertices.map((v) => toLocal(origin, toLatLng(v))))
+  const out = []
+  for (let i = 0; i < inc.length; i += 1) {
+    for (let j = i + 1; j < inc.length; j += 1) {
+      const a = overlapArea(polys[i], polys[j], 0.2)
+      if (a > minM2) out.push({ a: inc[i], b: inc[j], areaM2: a })
+    }
+  }
+  return out
 }

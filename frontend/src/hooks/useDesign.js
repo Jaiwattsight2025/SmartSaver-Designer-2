@@ -31,7 +31,25 @@ export function useDesign() {
       batteryKwh: designChoices.batteryKwh ?? suggestedBattery,
       inverterKw: designChoices.inverterKw,
     }
-    const design = computeDesign({ profile, insights, roofFaces: building.roofFaces, pv, battery, state })
+    // Panels are only placed once the customer has confirmed the roof outlines.
+    const roofConfirmed = Boolean(building.roofModelAccepted)
+    const layoutOptions = {
+      orientation: designChoices.panelOrientation,
+      setbackM: designChoices.setbackM,
+      rowGapM: designChoices.rowGapM,
+      removedPanelIds: designChoices.removedPanelIds ?? [],
+      pinnedPanelIds: designChoices.pinnedPanelIds ?? [],
+      obstacles: designChoices.obstacles ?? [],
+    }
+    const design = computeDesign({
+      profile,
+      insights,
+      roofFaces: roofConfirmed ? building.roofFaces : [],
+      pv,
+      battery,
+      state,
+      layoutOptions,
+    })
     return {
       profile,
       state,
@@ -42,6 +60,7 @@ export function useDesign() {
       suggestedBattery,
       design,
       insights,
+      roofConfirmed,
     }
-  }, [profile, insights, building.roofFaces, building.formattedAddress, designChoices])
+  }, [profile, insights, building.roofFaces, building.roofModelAccepted, building.formattedAddress, designChoices])
 }

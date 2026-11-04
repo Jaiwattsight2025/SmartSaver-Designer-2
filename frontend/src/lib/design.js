@@ -12,10 +12,11 @@ import {
   stateYield,
   suggestedInverterKw,
 } from './energyModel'
-import { layoutPanels } from './panelLayout'
+import { layoutPanels, validateLayout } from './panelLayout'
+import { MAX_DC_AC_RATIO, ROOF_EDGE_SETBACK_M } from '../config/designerConfig'
 import { roofTotals } from './roofFaces'
 
-export function computeDesign({ profile, insights, roofFaces, pv, battery, state }) {
+export function computeDesign({ profile, insights, roofFaces, pv, battery, state, layoutOptions = {} }) {
   const roof = roofTotals(roofFaces ?? [])
   const layout = layoutPanels({
     insights,
@@ -23,6 +24,7 @@ export function computeDesign({ profile, insights, roofFaces, pv, battery, state
     panelCount: pv.panelCount,
     moduleWatts: pv.moduleWatts,
     state,
+    ...layoutOptions,
   })
   const inverterKw = battery.inverterKw ?? suggestedInverterKw(layout.dcKw)
   const batteryKwh = battery.batteryKwh ?? 0
@@ -55,8 +57,19 @@ export function computeDesign({ profile, insights, roofFaces, pv, battery, state
     warnings: [],
   }
 
-  if (dcAcRatio !== null && dcAcRatio > 1.33) {
-    result.warnings.push('Panels are more than 133% of the inverter size - pick a bigger inverter.')
+  layout.notes?.forEach((n) => result.warnings.push(n))
+
+  // Final checks: panels inside the roof with the setback, no overlaps, no no-go areas, inverter limit.
+  result.validation = validateLayout(layout, roofFaces ?? [], {
+    setbackM: layoutOptions.setbackM ?? ROOF_EDGE_SETBACK_M,
+    obstacles: layoutOptions.obstacles ?? [],
+  })
+  if (dcAcRatio !== null && dcAcRatio > MAX_DC_AC_RATIO + 1e-9) {
+    result.validation.issues.push({
+      level: 'error',
+      message: `Panels (${layout.dcKw.toFixed(2)} kW) are more than ${Math.round(MAX_DC_AC_RATIO * 100)}% of the ${inverterKw} kW inverter - pick a bigger inverter or fewer panels.`,
+    })
+    result.validation.ok = false
   }
 
   const sp = solarPrice(layout.dcKw)

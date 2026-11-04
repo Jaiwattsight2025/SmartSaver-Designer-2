@@ -41,12 +41,16 @@ const actionTypes = {
   SET_ENERGY_PROFILE: 'SET_ENERGY_PROFILE',
   CLEAR_ENERGY_PROFILE: 'CLEAR_ENERGY_PROFILE',
   UPDATE_DESIGN: 'UPDATE_DESIGN',
+  UNCONFIRM_ROOF: 'UNCONFIRM_ROOF',
 }
 
+// Any change to the roof means it has to be confirmed again, and hand-picked
+// panel spots no longer line up, so they are cleared.
 function withFaces(state, roofFaces, selectedRoofFaceId = state.building.selectedRoofFaceId) {
   return touchProject({
     ...state,
     building: { ...state.building, roofFaces, selectedRoofFaceId, roofModelAccepted: false },
+    design: { ...state.design, removedPanelIds: [], pinnedPanelIds: [] },
   })
 }
 
@@ -174,6 +178,7 @@ function reducer(state, action) {
           selectedRoofFaceId: action.payload[0]?.id ?? null,
           roofModelAccepted: false,
         },
+        design: { ...state.design, removedPanelIds: [], pinnedPanelIds: [], obstacles: [] },
       })
 
     case actionTypes.SELECT_ROOF_FACE:
@@ -226,6 +231,9 @@ function reducer(state, action) {
     case actionTypes.CLEAR_ENERGY_PROFILE:
       return touchProject({ ...state, energyProfile: null })
 
+    case actionTypes.UNCONFIRM_ROOF:
+      return touchProject({ ...state, building: { ...state.building, roofModelAccepted: false } })
+
     case actionTypes.UPDATE_DESIGN:
       return touchProject({ ...state, design: { ...state.design, ...action.payload } })
 
@@ -269,6 +277,7 @@ export function ProjectProvider({ children }) {
       setEnergyProfile: (payload) => dispatch({ type: actionTypes.SET_ENERGY_PROFILE, payload }),
       clearEnergyProfile: () => dispatch({ type: actionTypes.CLEAR_ENERGY_PROFILE }),
       updateDesign: (payload) => dispatch({ type: actionTypes.UPDATE_DESIGN, payload }),
+      unconfirmRoof: () => dispatch({ type: actionTypes.UNCONFIRM_ROOF }),
     }),
     [],
   )

@@ -228,6 +228,7 @@ export function layoutPanels({
   const faceStats = []
   let all = []
   let blockedByObstacles = 0
+  const removedCells = []
   for (const face of included) {
     const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM })
     // Yield from Google's nearest panel spot on this segment, else the segment mean, else the state average.
@@ -263,7 +264,10 @@ export function layoutPanels({
         blockedByObstacles += 1
         continue
       }
-      if (removed.has(cell.id)) continue
+      if (removed.has(cell.id)) {
+        removedCells.push({ id: cell.id, faceId: cell.faceId, corners: cell.corners, center: cell.center })
+        continue
+      }
       kept += 1
       all.push({ ...cell, yearlyAcKwh, source, geom, faceMean: mean ?? fallback })
     }
@@ -335,6 +339,7 @@ export function layoutPanels({
     faceStats,
     notes,
     blockedByObstacles,
+    removedCells,
   }
 }
 

@@ -1,4 +1,4 @@
-import { DEFAULT_MODULE_WATTS } from '../config/designerConfig'
+import { DEFAULT_MODULE_WATTS, DEFAULT_PANEL_ORIENTATION, ROOF_EDGE_SETBACK_M, ROW_GAP_M } from '../config/designerConfig'
 import { createEmptyBuilding } from './Building'
 
 export function createEmptyProject() {
@@ -29,6 +29,13 @@ export function createEmptyProject() {
       panelCount: null,
       batteryKwh: null,
       inverterKw: null,
+      // Panel layout (D2)
+      panelOrientation: DEFAULT_PANEL_ORIENTATION,
+      setbackM: ROOF_EDGE_SETBACK_M,
+      rowGapM: ROW_GAP_M,
+      removedPanelIds: [],
+      pinnedPanelIds: [],
+      obstacles: [], // [{ id, vertices: [{lat,lng}] }] no-go areas
     },
     results: {
       annualIrradianceKwhM2: null,
