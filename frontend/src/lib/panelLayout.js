@@ -27,6 +27,9 @@ import {
   ROOF_EDGE_SETBACK_M,
   ROW_GAP_M,
   SMALL_SYSTEM_PANELS,
+  FLAT_ROOF_MAX_PITCH_DEG,
+  TILT_FRAME_DEG,
+  WINTER_NOON_SUN_DEG,
 } from '../config/designerConfig'
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
@@ -48,11 +51,33 @@ export function moduleSize(watts) {
   return MODULE_DIMENSIONS_BY_WATTS[watts] ?? { widthM: MODULE_WIDTH_M, heightM: MODULE_HEIGHT_M }
 }
 
+/**
+ * How panels sit on a face. Pitched roofs: flush, following the roof.
+ * Flat roofs (under FLAT_ROOF_MAX_PITCH_DEG): on tilt frames facing north, with
+ * rows spaced so one row does not shade the next at winter noon.
+ */
+export function mountFor(face) {
+  const pitch = Number(face?.pitchDegrees) || 0
+  if (pitch < FLAT_ROOF_MAX_PITCH_DEG) return { flat: true, tiltDeg: TILT_FRAME_DEG, azimuthDeg: 0 }
+  return { flat: false, tiltDeg: pitch, azimuthDeg: Number(face?.azimuthDegrees) || 0 }
+}
+
+/** Gap needed behind a tilted row of slope length `lengthM` so it does not shade the next row at winter noon. */
+export function tiltRowShadowGapM(lengthM, tiltDeg = TILT_FRAME_DEG, sunDeg = WINTER_NOON_SUN_DEG) {
+  return (lengthM * Math.sin(tiltDeg * RAD)) / Math.tan(sunDeg * RAD)
+}
+
 /** Panel footprint seen from above: `across` along the gutter, `down` up/down the slope. */
 export function panelFootprint(face, { widthM, heightM, orientation }) {
-  const cosP = Math.cos((Number(face.pitchDegrees) || 0) * RAD)
+  const m = mountFor(face)
+  const cosP = Math.cos((m.flat ? m.tiltDeg : Number(face.pitchDegrees) || 0) * RAD)
   const landscape = String(orientation).toLowerCase() === 'landscape'
-  return landscape ? { across: heightM, down: widthM * cosP } : { across: widthM, down: heightM * cosP }
+  const slope = landscape ? widthM : heightM
+  return {
+    across: landscape ? heightM : widthM,
+    down: slope * cosP,
+    shadowGapM: m.flat ? tiltRowShadowGapM(slope, m.tiltDeg) : 0,
+  }
 }
 
 /**
@@ -64,7 +89,7 @@ export function panelFootprint(face, { widthM, heightM, orientation }) {
 export function faceFrame(face) {
   const origin = toLatLng(face.center) ?? centroid(face.vertices)
   const xy = ccw(face.vertices.map((v) => toLocal(origin, toLatLng(v))))
-  const az = faceAxes(face.azimuthDegrees)
+  const az = faceAxes(mountFor(face).azimuthDeg) // flat roofs: rows face north
   let best = null
   for (let i = 0; i < xy.length; i += 1) {
     const a = xy[i]
@@ -104,9 +129,9 @@ export function fillFace(face, options = {}) {
   const frame = faceFrame(face)
   const inner = insetPolygon(frame.poly, o.setbackM)
   if (inner.length < 3) return { cells: [], frame, grid: null }
-  const { across: w, down: h } = panelFootprint(face, o)
+  const { across: w, down: h, shadowGapM } = panelFootprint(face, o)
   const stepU = w + o.gapM
-  const stepV = h + o.rowGapM
+  const stepV = h + Math.max(o.rowGapM, shadowGapM)
   const minU = Math.min(...inner.map((p) => p.x))
   const maxV = Math.max(...inner.map((p) => p.y))
   const minV = Math.min(...inner.map((p) => p.y))
@@ -247,7 +272,8 @@ export function layoutPanels({
             }))
         : []
     const mean = gp.length ? gp.reduce((s, p) => s + p.ac, 0) / gp.length : null
-    const fallback = (moduleWatts / 1000) * yieldKw * orientationFactor(face.pitchDegrees, face.azimuthDegrees)
+    const mount = mountFor(face)
+    const fallback = (moduleWatts / 1000) * yieldKw * orientationFactor(mount.tiltDeg, mount.azimuthDeg)
     let kept = 0
     for (const cell of cells) {
       let yearlyAcKwh = mean ?? fallback
@@ -405,6 +431,11 @@ export function layoutPanels({
     return out
   }
   const panels = chosen.map(strip)
+  const flatIds = new Set(included.filter((f) => mountFor(f).flat).map((f) => f.id))
+  if (panels.some((p) => flatIds.has(p.faceId)))
+    notes.push(
+      `Flat roof: panels are on ${TILT_FRAME_DEG}° tilt frames facing north, with rows spaced so they do not shade each other in winter.`,
+    )
   const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
   const sources = new Set(panels.map((p) => p.source))
   return {
