@@ -110,7 +110,7 @@ export async function createMapController(container) {
   const geocoder = new maps.Geocoder()
 
   // Drawn on top of the satellite image: roof faces, panels, a face being traced.
-  const overlays = { faces: [], panels: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null }
+  const overlays = { faces: [], panels: [], obstacles: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null }
   const clearList = (list) => {
     list.forEach((o) => o.setMap(null))
     list.length = 0
@@ -185,17 +185,24 @@ export async function createMapController(container) {
       return map
     },
 
-    /** faces: roof faces; opts: { selectedId, dim, onSelect(id) } */
+    /**
+     * faces: roof faces; opts: { selectedId, dim, onSelect(id), editableId, onEdit(id, vertices) }.
+     * The editable face gets corner handles (drag a corner, drag a mid-point to add one,
+     * right-click a corner to delete it).
+     */
     showRoofFaces(faces, opts = {}) {
       clearList(overlays.faces)
       for (const face of faces ?? []) {
         if (!face.vertices || face.vertices.length < 3) continue
         const selected = face.id === opts.selectedId
+        const editable = Boolean(opts.onEdit) && face.id === opts.editableId && !overlays.traceListener
+        const lowConfidence = face.outlineConfidence === 'low' && !face.outlineEdited
         const polygon = new maps.Polygon({
           map,
           paths: face.vertices,
-          clickable: !overlays.traceListener && Boolean(opts.onSelect),
-          strokeColor: selected ? '#ffffff' : face.included ? '#ffc400' : '#a5afb9',
+          editable,
+          clickable: !overlays.traceListener && Boolean(opts.onSelect || editable),
+          strokeColor: selected ? '#ffffff' : lowConfidence ? '#ff8a3d' : face.included ? '#ffc400' : '#a5afb9',
           strokeOpacity: opts.dim ? 0.6 : 0.95,
           strokeWeight: selected ? 3 : 2,
           fillColor: face.included ? '#ffc400' : '#a5afb9',
@@ -203,38 +210,107 @@ export async function createMapController(container) {
           zIndex: selected ? 3 : 2,
         })
         if (opts.onSelect) polygon.addListener('click', () => opts.onSelect(face.id))
+        if (editable) {
+          const path = polygon.getPath()
+          let timer = null
+          const emit = () => {
+            clearTimeout(timer)
+            timer = setTimeout(() => {
+              const pts = path.getArray().map((ll) => ({ lat: ll.lat(), lng: ll.lng() }))
+              if (pts.length >= 3) opts.onEdit(face.id, pts)
+            }, 120)
+          }
+          path.addListener('set_at', emit)
+          path.addListener('insert_at', emit)
+          path.addListener('remove_at', emit)
+          polygon.addListener('contextmenu', (e) => {
+            if (e.vertex != null && path.getLength() > 3) path.removeAt(e.vertex)
+          })
+        }
         overlays.faces.push(polygon)
       }
     },
 
-    /** panels: [{ corners: [{lat,lng}x4] }] */
-    showPanels(panels) {
+    /**
+     * panels: [{ id, corners }]. opts: { ghosts: [{ id, corners }], onPanelClick(id),
+     * onGhostClick(id), onPanelDrag(id, {lat,lng}) }. Ghosts are free spots the
+     * customer can click to add a panel.
+     */
+    showPanels(panels, opts = {}) {
       clearList(overlays.panels)
+      const editing = Boolean(opts.onPanelClick || opts.onPanelDrag)
+      for (const ghost of opts.ghosts ?? []) {
+        const g = new maps.Polygon({
+          map,
+          paths: ghost.corners,
+          clickable: Boolean(opts.onGhostClick),
+          strokeColor: '#9ec5ff',
+          strokeOpacity: 0.7,
+          strokeWeight: 1,
+          fillColor: '#9ec5ff',
+          fillOpacity: 0.08,
+          zIndex: 4,
+        })
+        if (opts.onGhostClick) g.addListener('click', () => opts.onGhostClick(ghost.id))
+        overlays.panels.push(g)
+      }
       for (const panel of panels ?? []) {
-        overlays.panels.push(
-          new maps.Polygon({
-            map,
-            paths: panel.corners,
-            clickable: false,
-            strokeColor: '#9ec5ff',
-            strokeOpacity: 0.9,
-            strokeWeight: 1,
-            fillColor: '#10213f',
-            fillOpacity: 0.85,
-            zIndex: 4,
-          }),
-        )
+        const poly = new maps.Polygon({
+          map,
+          paths: panel.corners,
+          clickable: editing,
+          draggable: Boolean(opts.onPanelDrag),
+          strokeColor: '#9ec5ff',
+          strokeOpacity: 0.9,
+          strokeWeight: 1,
+          fillColor: '#10213f',
+          fillOpacity: 0.85,
+          zIndex: 5,
+        })
+        if (opts.onPanelClick) poly.addListener('click', () => opts.onPanelClick(panel.id))
+        if (opts.onPanelDrag) {
+          poly.addListener('dragend', () => {
+            const pts = poly.getPath().getArray()
+            const lat = pts.reduce((t, p) => t + p.lat(), 0) / pts.length
+            const lng = pts.reduce((t, p) => t + p.lng(), 0) / pts.length
+            opts.onPanelDrag(panel.id, { lat, lng })
+          })
+        }
+        overlays.panels.push(poly)
+      }
+    },
+
+    /** No-go areas (vents, skylights, aircon): red outlines. opts: { onClick(id) } */
+    showObstacles(obstacles, opts = {}) {
+      clearList(overlays.obstacles)
+      for (const ob of obstacles ?? []) {
+        if (!ob.vertices || ob.vertices.length < 3) continue
+        const poly = new maps.Polygon({
+          map,
+          paths: ob.vertices,
+          clickable: Boolean(opts.onClick),
+          strokeColor: '#ff4d4f',
+          strokeOpacity: 1,
+          strokeWeight: 2,
+          fillColor: '#ff4d4f',
+          fillOpacity: 0.35,
+          zIndex: 6,
+        })
+        if (opts.onClick) poly.addListener('click', () => opts.onClick(ob.id))
+        overlays.obstacles.push(poly)
       }
     },
 
     /** Click points on the map to outline a roof face. onChange(points) after each click. */
-    startTracing(onChange) {
+    startTracing(onChange, { color = '#65d487' } = {}) {
       controller.cancelTracing()
-      overlays.faces.forEach((p) => p.setOptions({ clickable: false }))
+      overlays.faces.forEach((p) => p.setOptions({ clickable: false, editable: false }))
+      overlays.panels.forEach((p) => p.setOptions({ clickable: false }))
+      overlays.obstacles.forEach((p) => p.setOptions({ clickable: false }))
       overlays.traceLine = new maps.Polyline({
         map,
         path: [],
-        strokeColor: '#65d487',
+        strokeColor: color,
         strokeWeight: 3,
         clickable: false,
         zIndex: 6,
@@ -249,8 +325,8 @@ export async function createMapController(container) {
             map,
             center: point,
             radius: 0.25,
-            strokeColor: '#65d487',
-            fillColor: '#65d487',
+            strokeColor: color,
+            fillColor: color,
             fillOpacity: 1,
             clickable: false,
             zIndex: 7,
@@ -290,6 +366,7 @@ export async function createMapController(container) {
       controller.cancelTracing()
       clearList(overlays.faces)
       clearList(overlays.panels)
+      clearList(overlays.obstacles)
     },
 
     /** Centre on a point without changing zoom (used when the map is locked). */

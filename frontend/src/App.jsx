@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { snapToCell } from './lib/panelLayout'
+import { editedOutline } from './lib/roofFaces'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
 import EnergyProfileCard from './components/EnergyProfileCard'
@@ -65,7 +67,7 @@ function App() {
   const [mapController, setMapController] = useState(null)
   const mapRef = useRef(null)
 
-  const { building, energyProfile, actions } = useProject()
+  const { building, energyProfile, actions, project } = useProject()
   const { design } = useDesign()
   const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, solar, roofFaces, selectedRoofFaceId } =
     building
@@ -73,24 +75,101 @@ function App() {
   const activeIndex = useMemo(() => steps.findIndex((step) => step.id === activeStep), [activeStep])
   const activeCard = cards[activeStep]
 
-  // Draw roof faces and panels on the map for the current step.
+  // Panel edit mode (step 3): click a panel to remove it, click a blue ghost to add one, drag to move.
+  const [panelEdit, setPanelEdit] = useState(false)
+  // Bumped when a trace is cancelled/finished so the map redraws clickable shapes.
+  const [mapTick, setMapTick] = useState(0)
+  const designChoices = project.design
+  const roofConfirmed = Boolean(building.roofModelAccepted)
+
+  const editPanels = useMemo(() => {
+    const layout = design.layout
+    const placed = layout.panels.map((p) => p.id)
+    const removedIds = designChoices.removedPanelIds ?? []
+    const pinnedIds = designChoices.pinnedPanelIds ?? []
+    return {
+      remove(id) {
+        actions.updateDesign({
+          removedPanelIds: [...new Set([...removedIds, id])],
+          pinnedPanelIds: pinnedIds.filter((x) => x !== id),
+          panelCount: Math.max(0, layout.count - 1),
+        })
+      },
+      add(id) {
+        actions.updateDesign({
+          removedPanelIds: removedIds.filter((x) => x !== id),
+          pinnedPanelIds: [...pinnedIds.filter((x) => x !== id), id],
+          panelCount: layout.count + 1,
+        })
+      },
+      drag(id, latLng) {
+        const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
+        const cell = snapToCell(pool, latLng, { exclude: placed })
+        if (!cell || cell.id === id) {
+          setMapTick((t) => t + 1) // snap back
+          return
+        }
+        actions.updateDesign({
+          removedPanelIds: [...new Set([...removedIds.filter((x) => x !== cell.id), id])],
+          pinnedPanelIds: [...pinnedIds.filter((x) => x !== id && x !== cell.id), cell.id],
+          panelCount: layout.count,
+        })
+      },
+    }
+  }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, actions])
+
+  // Draw roof faces, no-go areas and panels on the map for the current step.
   useEffect(() => {
     const map = mapController
     if (!map) return
     const showFaces = activeStep !== 'property' || roofFaces.length > 0
+    const onRoof = activeStep === 'roof'
     map.showRoofFaces(showFaces ? roofFaces : [], {
-      selectedId: activeStep === 'roof' ? selectedRoofFaceId : null,
-      dim: activeStep !== 'roof',
-      onSelect: activeStep === 'roof' ? actions.selectRoofFace : undefined,
+      selectedId: onRoof ? selectedRoofFaceId : null,
+      dim: !onRoof,
+      onSelect: onRoof ? actions.selectRoofFace : undefined,
+      editableId: onRoof ? selectedRoofFaceId : null,
+      onEdit: onRoof
+        ? (id, vertices) => {
+            const face = roofFaces.find((f) => f.id === id)
+            if (face) actions.updateRoofFace(id, editedOutline(face, vertices))
+          }
+        : undefined,
     })
-    map.showPanels(activeStep === 'property' || activeStep === 'roof' ? [] : design.layout.panels)
-  }, [mapController, activeStep, roofFaces, selectedRoofFaceId, design.layout.panels, actions])
+    map.showObstacles(activeStep === 'roof' || activeStep === 'panels' ? designChoices.obstacles ?? [] : [])
+    const showPanelsNow = activeStep !== 'property' && activeStep !== 'roof'
+    const editing = activeStep === 'panels' && panelEdit
+    const layout = design.layout
+    map.showPanels(showPanelsNow ? layout.panels : [], {
+      ghosts: editing ? [...layout.candidates.slice(layout.count), ...(layout.removedCells ?? [])] : [],
+      onPanelClick: editing ? editPanels.remove : undefined,
+      onGhostClick: editing ? editPanels.add : undefined,
+      onPanelDrag: editing ? editPanels.drag : undefined,
+    })
+  }, [
+    mapController,
+    activeStep,
+    roofFaces,
+    selectedRoofFaceId,
+    design.layout,
+    designChoices.obstacles,
+    panelEdit,
+    editPanels,
+    mapTick,
+    actions,
+  ])
 
   // What the pill on top of the map says on steps 2-4 (step 1 uses mapMessage).
   const stepGuidance = mapLocked
     ? {
-        roof: 'Yellow faces are in use. Click a face to select it.',
-        panels: `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
+        roof: roofConfirmed
+          ? 'Roof confirmed.'
+          : 'Click a face, then drag its corner dots onto the roof edges. Confirm the roof when it looks right.',
+        panels: !roofConfirmed
+          ? 'Confirm the roof in step 2 first.'
+          : panelEdit
+            ? 'Click a panel to remove it, a blue outline to add one, or drag a panel to move it.'
+            : `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
         battery: `${fmtKw(design.layout.dcKw)} solar${design.batteryKwh > 0 ? ` + ${design.batteryKwh} kWh battery` : ''}`,
       }[activeStep]
     : null
@@ -213,7 +292,7 @@ function App() {
         </div>
 
         <div className="status-cluster">
-          <span className="version-pill">v1.0 · D1</span>
+          <span className="version-pill">v1.0 · D2</span>
           <span className={`status-pill ${status.tone}`}>
             <span className="status-dot" />
             {status.label}
@@ -391,8 +470,22 @@ function App() {
                 </div>
               )}
 
-              {activeStep === 'roof' && <RoofStep map={mapController} onGoToProperty={() => setActiveStep('property')} />}
-              {activeStep === 'panels' && <PanelsStep onGoToRoof={() => setActiveStep('roof')} />}
+              {activeStep === 'roof' && (
+                <RoofStep
+                  map={mapController}
+                  onGoToProperty={() => setActiveStep('property')}
+                  onGoToPanels={() => setActiveStep('panels')}
+                  onRedraw={() => setMapTick((t) => t + 1)}
+                />
+              )}
+              {activeStep === 'panels' && (
+                <PanelsStep
+                  onGoToRoof={() => setActiveStep('roof')}
+                  roofConfirmed={roofConfirmed}
+                  editMode={panelEdit}
+                  onEditMode={setPanelEdit}
+                />
+              )}
               {activeStep === 'battery' && <BatteryStep />}
               {activeStep === 'output' && <OutputStep />}
               {activeStep === 'summary' && <SummaryStep />}

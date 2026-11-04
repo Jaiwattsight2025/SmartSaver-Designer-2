@@ -1355,3 +1355,46 @@ details.solar-panel summary::-webkit-details-marker {
     font-size: 13px;
   }
 }
+
+/* D2: roof outline confidence, confirm, no-go areas */
+.info-box.success {
+  border-color: rgba(101, 212, 135, 0.35);
+  background: rgba(101, 212, 135, 0.08);
+  color: #a6e8b9;
+}
+.face-outline-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.outline-badge {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.outline-badge.high,
+.outline-badge.good {
+  color: #a6e8b9;
+  border-color: rgba(101, 212, 135, 0.4);
+}
+.outline-badge.medium {
+  color: #ffd66b;
+  border-color: rgba(255, 196, 0, 0.4);
+}
+.outline-badge.low {
+  color: #ffb07a;
+  border-color: rgba(255, 138, 61, 0.5);
+}
+.obstacle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.validation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

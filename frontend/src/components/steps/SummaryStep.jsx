@@ -4,6 +4,7 @@ import { useDesign } from '../../hooks/useDesign'
 import { PRICES_ARE_PLACEHOLDERS, QUOTE_URL, SHOP_PRODUCTS_URL } from '../../config/pricing'
 import { buildDesignJson, buildSummaryText } from '../../lib/designSummary'
 import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
+import ValidationList from '../ValidationList'
 
 function useSummaryData() {
   const { building } = useProject()
@@ -191,6 +192,7 @@ export function SummaryReport() {
               {w}
             </p>
           ))}
+          <ValidationList validation={design.validation} />
           <p className="hint">
             Prices and savings are estimates only. A SmartSaver installer will check your roof, switchboard and network
             rules before giving you a fixed quote.

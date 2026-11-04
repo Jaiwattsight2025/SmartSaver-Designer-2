@@ -3,6 +3,7 @@ import { useDesign } from '../../hooks/useDesign'
 import { BATTERY_SIZE_OPTIONS_KWH, INVERTER_SIZES_KW } from '../../config/designerConfig'
 import { suggestedInverterKw } from '../../lib/energyModel'
 import { fmtKw } from '../../lib/format'
+import ValidationList from '../ValidationList'
 
 export default function BatteryStep() {
   const { actions, designChoices } = useProject()
@@ -55,6 +56,7 @@ export default function BatteryStep() {
           {w}
         </div>
       ))}
+      <ValidationList validation={design.validation} />
 
       {design.bill && design.billSolarOnly && design.batteryKwh > 0 && (
         <div className="roof-totals">
