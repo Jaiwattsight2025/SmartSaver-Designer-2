@@ -1,16 +1,51 @@
-# React + Vite
+# SmartSaver Solar + Battery Designer (frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite app that takes a customer from their power bill to a sized solar +
+battery system in six steps:
 
-Currently, two official plugins are available:
+1. **Property** – bill data (Wattsight link, Wattsight results `.json`, or typed in) and the address.
+2. **Roof** – roof faces from the Google Solar API, plus faces you trace by hand. Tick the ones to use.
+3. **Panels** – Google's panel spots on the ticked faces (grid fallback for traced faces); size defaults to the Wattsight `sol_kw`.
+4. **Battery & inverter** – suggested sizes (Wattsight `bat_kwh`), editable.
+5. **Output** – yearly and monthly generation, self-use vs export, bill before/after.
+6. **Summary** – size, savings, placeholder price, payback; quote / shop links; print-to-PDF and JSON download.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run
 
-## React Compiler
+```bash
+cd frontend
+npm install
+npm run dev -- --port 5173   # http://localhost:5173
+npm test                     # vitest unit tests (src/lib/__tests__)
+npm run build
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+`frontend/.env.local` must contain `VITE_GOOGLE_MAPS_API_KEY` (Maps JavaScript, Geocoding
+and Solar APIs enabled). It is git-ignored – never commit it.
 
-## Expanding the ESLint configuration
+## Wattsight hand-off
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Wattsight opens the designer with its profile in the query string, for example:
+
+```
+http://localhost:5173/?v=1&src=wattsight&pc=3147&st=VIC&ret=Alinta+Energy&days=31&kwh_yr=11462&kwh_day=31.4&tariff=single&rate=0.3035&supply=0.862&fit=0.05&sol_kw=10&bat_kwh=13.5
+```
+
+Keys: `v, src, pc, st, ret, days, kwh_yr, kwh_day, kwh_pk, kwh_sh, kwh_op, kwh_cl, exp_kwh,
+tariff, rate, r_pk, r_sh, r_op, r_cl, supply, fit, sol_kw, bat_kwh` (rates in $/kWh, supply in $/day).
+A Wattsight results file (`"format": "wattsight-results"`, version 1) can be uploaded instead.
+Parsing and validation live in `src/lib/energyProfile.js`.
+
+## Where things live
+
+| Path | What |
+| --- | --- |
+| `src/config/designerConfig.js` | Modelling assumptions (yields by state, load/solar shapes, module sizes, inverter/battery options) |
+| `src/config/pricing.js` | **Placeholder** prices and shop/quote URLs – edit here |
+| `src/lib/` | Pure logic: profile parsing, roof faces, panel layout, energy model, design, summary export |
+| `src/hooks/useDesign.js` | Joins project state into one computed design |
+| `src/components/steps/` | One component per step |
+| `src/services/googleMaps.js` | Map, roof-face/panel overlays and tracing |
+
+All prices are placeholders (`PRICES_ARE_PLACEHOLDERS = true`) and are labelled as such in the UI
+and in exports. Battery prices are the archived AlphaESS listings from the SmartSaver Shopify store.
