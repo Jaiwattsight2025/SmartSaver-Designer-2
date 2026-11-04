@@ -38,12 +38,25 @@ function formatGoogleError(status, body) {
   return apiMessage || `Solar API request failed with HTTP ${status}.`
 }
 
-export async function getBuildingInsights({ lat, lng }) {
+/**
+ * Ask for MEDIUM (or better) imagery first; if Google has none for this house,
+ * try again accepting BASE quality so more Australian addresses get a roof.
+ */
+export async function getBuildingInsights(location) {
+  try {
+    return await requestBuildingInsights(location, 'MEDIUM')
+  } catch (error) {
+    if (error.details?.httpStatus !== 404) throw error
+    return requestBuildingInsights(location, 'BASE')
+  }
+}
+
+async function requestBuildingInsights({ lat, lng }, requiredQuality) {
   const url = new URL(SOLAR_ENDPOINT)
 
   url.searchParams.set('location.latitude', String(lat))
   url.searchParams.set('location.longitude', String(lng))
-  url.searchParams.set('requiredQuality', 'MEDIUM')
+  url.searchParams.set('requiredQuality', requiredQuality)
   url.searchParams.set('key', getApiKey())
 
   let response
