@@ -1,5 +1,17 @@
 # Changelog
 
+## [designer-v2] – 2026-11-05 – D2.1: roof outlines traced from Google's 3D roof data
+
+- On lock, the app makes one Google Solar dataLayers call (0.25 m height map + building mask), decodes the GeoTIFFs
+  in the browser (geotiff.js) and caches them per property (memory + localStorage, 30 days, 6 properties max).
+- Each roof face gets a plane fitted from Google's segment stats, then a clean outline: pixels assigned to the
+  best-fitting plane, clipped to the building mask, simplified and snapped to ridge / hip / valley lines, no overlaps.
+  Badges: "traced from 3D roof data" (high) or "traced - check the corners" (medium). Low-confidence faces keep the
+  estimate, and every traced face has "Use Google's estimate instead". If the call fails, estimates are used.
+- Ridge split tool (ported from the old roof.js): select a face, "Split along a ridge", click two points.
+- Panel edit: a click that turns into a tiny drag now removes the panel instead of nudging it; repeat clicks ignored.
+- Dev only: window.__ssdMap helpers so the real-map e2e can click panels, ghosts and corners.
+
 ## [designer-v2] – 2026-11-05 – Milestone D2: roof outlines first, then panels
 
 - Roof faces now get a real outline estimate (rectangle / hip / valley / fit-to-Google-panels) instead of a hull
@@ -13,8 +25,7 @@
 - Panel edit mode: click a panel to remove, click a blue outline to add, drag to move (snaps to the row).
 - Final checks: every panel inside its face with the setback, no overlaps, nothing on a no-go area, kW cap
   (13.2 kW) and inverter limit (133%).
-- Known gaps: no DSM plane fit / building footprint yet (needs Google data layers + GeoTIFF parsing); outlines are
-  estimates until the customer checks them.
+- Known gaps: outlines are estimates until the customer checks them (DSM tracing added in D2.1 above).
 
 ## [designer-v1] – 2026-11-04 – Milestone D1
 
