@@ -298,6 +298,18 @@ export async function createMapController(container) {
       map.setCenter(point)
       if (zoom) map.setZoom(zoom)
     },
+
+    /** Zoom the map so every roof face fills the view (max zoom 21). */
+    fitToFaces(faces) {
+      const points = (faces ?? []).flatMap((face) => face.vertices ?? [])
+      if (points.length < 3) return
+      const bounds = new maps.LatLngBounds()
+      points.forEach((point) => bounds.extend(point))
+      map.fitBounds(bounds, 40)
+      maps.event.addListenerOnce(map, 'idle', () => {
+        if (map.getZoom() > 21) map.setZoom(21)
+      })
+    },
   }
 
   return controller

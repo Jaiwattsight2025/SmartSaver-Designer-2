@@ -161,6 +161,7 @@ function App() {
 
       actions.setSolarSuccess({ response, summary })
       actions.setRoofFaces(faces)
+      mapRef.current?.fitToFaces(faces)
       setStatus({ label: 'Roof loaded', tone: 'success' })
       setMapMessage(`We found ${faces.length} roof faces. Press Next to check them.`)
     } catch (error) {
