@@ -25,12 +25,16 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
           {face.outlineEdited ? (
             <span className="outline-badge good">Outline adjusted by you</span>
           ) : (
-            <span className={`outline-badge ${face.outlineConfidence ?? 'low'}`}>
-              {face.outlineConfidence === 'high'
-                ? 'Outline: good estimate'
-                : face.outlineConfidence === 'medium'
-                  ? 'Outline: check the corners'
-                  : 'Outline: rough - please adjust'}
+            <span className={`outline-badge ${face.outlineConfidence ?? 'low'}`} title={face.outlineNote ?? ''}>
+              {face.outlineShape === 'dsm'
+                ? face.outlineConfidence === 'high'
+                  ? 'Outline: traced from 3D roof data'
+                  : 'Outline: traced - check the corners'
+                : face.outlineConfidence === 'high'
+                  ? 'Outline: good estimate'
+                  : face.outlineConfidence === 'medium'
+                    ? 'Outline: check the corners'
+                    : 'Outline: rough - please adjust'}
             </span>
           )}
           {selected && <small>Drag the white corner dots on the map to match the roof edges.</small>}
@@ -51,6 +55,11 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
           {face.outlineEdited && face.originalVertices && (
             <button type="button" className="link-button" onClick={onResetOutline}>
               Reset outline
+            </button>
+          )}
+          {!face.outlineEdited && face.outlineShape === 'dsm' && face.estimateVertices && (
+            <button type="button" className="link-button" onClick={() => onUpdate(estimateOutline(face), true)}>
+              Use Google's estimate instead
             </button>
           )}
         </div>
@@ -302,6 +311,18 @@ function editedOutlineReset(face) {
     ...editedOutline(face, face.originalVertices),
     outlineEdited: false,
     outlineConfidence: face.originalConfidence ?? 'medium',
+    originalVertices: undefined,
+  }
+}
+
+/** Fall back from the 3D-traced outline to the Solar API estimate. */
+function estimateOutline(face) {
+  return {
+    ...editedOutline(face, face.estimateVertices),
+    outlineEdited: false,
+    outlineShape: 'estimate',
+    outlineConfidence: face.estimateConfidence ?? 'medium',
+    outlineNote: face.estimateNote,
     originalVertices: undefined,
   }
 }

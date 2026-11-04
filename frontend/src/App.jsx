@@ -13,6 +13,8 @@ import { getBuildingInsights, summariseBuildingInsights } from './services/solar
 import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
+import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
+import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
 
 const steps = [
@@ -66,6 +68,7 @@ function App() {
   const [mapMessage, setMapMessage] = useState('Enter a property address.')
   const [mapController, setMapController] = useState(null)
   const mapRef = useRef(null)
+  const lockSeq = useRef(0)
 
   const { building, energyProfile, actions, project } = useProject()
   const { design } = useDesign()
@@ -227,6 +230,7 @@ function App() {
     const centre = mapRef.current.getMap().getCenter()
     const target = centre ? { lat: centre.lat(), lng: centre.lng() } : coordinates
 
+    const seq = (lockSeq.current += 1)
     mapRef.current.setInteractive(false)
     actions.setMapLocked(true)
     actions.setSolarConnecting()
@@ -236,13 +240,34 @@ function App() {
     try {
       const response = await getBuildingInsights(target)
       const summary = summariseBuildingInsights(response)
-      const faces = facesFromBuildingInsights(response)
+      const estimated = facesFromBuildingInsights(response)
 
       actions.setSolarSuccess({ response, summary })
+      if (lockSeq.current !== seq) return
+
+      // Precise outlines from Google's 3D roof data (one cached call per building);
+      // the estimated outlines stay as the fallback.
+      setMapMessage('Tracing the roof edges from Google’s 3D roof data…')
+      let faces = estimated
+      let traceNote = ''
+      try {
+        const layers = await getRoofLayers(response)
+        const traced = traceFacesFromLayers(response, layers)
+        const { faces: refinedFaces, refined } = refineFacesWithDsm(estimated, traced)
+        faces = refinedFaces
+        traceNote = refined
+          ? ` ${refined} of ${faces.length} outlines traced from 3D roof data.`
+          : ' Outlines are estimates; check the corners.'
+      } catch (error) {
+        console.warn('3D roof data unavailable:', error.message)
+        traceNote = ' 3D roof data was unavailable, so outlines are estimates; check the corners.'
+      }
+      if (lockSeq.current !== seq) return
+
       actions.setRoofFaces(faces)
       mapRef.current?.fitToFaces(faces)
       setStatus({ label: 'Roof loaded', tone: 'success' })
-      setMapMessage(`We found ${faces.length} roof faces. Press Next to check them.`)
+      setMapMessage(`We found ${faces.length} roof faces.${traceNote} Press Next to check them.`)
     } catch (error) {
       actions.setSolarError(error.details ?? { message: error.message })
       setStatus({ label: 'No roof data', tone: 'error' })
@@ -253,6 +278,7 @@ function App() {
   const repositionProperty = () => {
     if (!mapRef.current) return
 
+    lockSeq.current += 1
     mapRef.current.setInteractive(true)
     mapRef.current.clearOverlays()
     actions.setMapLocked(false)
