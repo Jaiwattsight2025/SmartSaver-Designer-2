@@ -1,5 +1,18 @@
 # Changelog
 
+## [designer-v2] – 2026-11-05 – D2.2: no odd single panels, verandah/non-roof faces left out
+
+- Panel filler now places whole rectangular blocks on each face (full rows from the gutter, last row may be partial)
+  instead of scattered best-first spots. Each face gets at least 4 panels or none (2 when the whole system is 8
+  panels or fewer); set in designerConfig.js (MIN_PANELS_PER_FACE, MIN_PANELS_PER_FACE_SMALL, SMALL_SYSTEM_PANELS).
+  Panels that would only make a small group go to the best faces instead; if they cannot, the note says the system
+  is N panels smaller so no face has a tiny group. Setback, strict-inside and kW cap rules unchanged.
+- Faces you edit by hand (removed or added panels) keep exactly what you chose; the final checks warn about any face
+  with fewer panels than the minimum.
+- Likely non-roof faces (verandahs, carports, awnings) are flagged "Possibly verandah/not roof" and unticked by
+  default when at least two of these hold: under 2.6 m above the local ground (or 1 m+ below the main roof), nearly
+  flat (under 12°), narrower than 1.8 m, small (under 15 m²) with an uncertain outline. Tick the face to use it.
+
 ## [designer-v2] – 2026-11-05 – D2.1: roof outlines traced from Google's 3D roof data
 
 - On lock, the app makes one Google Solar dataLayers call (0.25 m height map + building mask), decodes the GeoTIFFs
