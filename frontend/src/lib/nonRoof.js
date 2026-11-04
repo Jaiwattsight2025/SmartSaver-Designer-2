@@ -16,6 +16,9 @@
  * A face steeper than 60 degrees is a wall or parapet edge and is flagged on
  * its own.
  * Being both low above ground and well below the main roof counts once.
+ * A raised verandah (a Queenslander's wrap-around, a first-floor balcony
+ * roof) is also flagged on its own: a flatter skirt joined along a crease to
+ * a steeper face that sits clearly higher (needs the 3D roof data).
  */
 import { toLatLng, toLocal } from './geo'
 
@@ -26,6 +29,7 @@ const FLAT_PITCH_DEG = 12
 const NARROW_M = 1.8
 const SMALL_M2 = 15
 const WALL_PITCH_DEG = 60
+const SKIRT = { pitchDiffDeg: 14, heightDiffM: 1.2, maxStepM: 0.5, minEdgeM: 2, maxRoofPitchDeg: 55 } // [ASSUMPTION] tuned on public test roofs
 const GROUND_PLAUSIBLE_M = [0.5, 40] // outside this the local ground estimate hit other roofs or noise
 
 /** Narrowest width of a face outline (metres, rotating callipers over its edges). */
@@ -80,20 +84,49 @@ export function nonRoofReasons(face, { mainHeightM = null, stats = null, mainIsF
 }
 
 /**
+ * Faces that look like a verandah skirt: flatter by SKIRT.pitchDiffDeg+ than a
+ * neighbour they meet along a crease, and SKIRT.heightDiffM+ lower than it.
+ * adjacency: [{ a, b, stepM, lenM }] by segment index. Returns Map(segIdx -> reason).
+ */
+export function verandahSkirts(faces, adjacency, stats = null) {
+  const out = new Map()
+  if (!adjacency?.length) return out
+  const bySeg = new Map((faces ?? []).filter((f) => f.segmentIndex != null).map((f) => [f.segmentIndex, f]))
+  for (const e of adjacency) {
+    if (e.stepM >= SKIRT.maxStepM || e.lenM < SKIRT.minEdgeM) continue
+    for (const [lo, hi] of [[e.a, e.b], [e.b, e.a]]) {
+      const f = bySeg.get(lo)
+      const g = bySeg.get(hi)
+      if (!f || !g) continue
+      const hf = planeHeight(f, stats)
+      const hg = planeHeight(g, stats)
+      const dp = (Number(g.pitchDegrees) || 0) - (Number(f.pitchDegrees) || 0)
+      if ((Number(g.pitchDegrees) || 0) > SKIRT.maxRoofPitchDeg) continue // the steeper one must be roof, not a wall
+      if (hf === null || hg === null || dp < SKIRT.pitchDiffDeg || hg - hf < SKIRT.heightDiffM) continue
+      if (!out.has(lo)) out.set(lo, `a flatter skirt ${(hg - hf).toFixed(1)} m below a steeper roof (likely a raised verandah)`)
+    }
+  }
+  return out
+}
+
+/**
  * Flag likely non-roof faces from Google's roof data (manual faces and faces
  * the user has already edited are left alone). Flagged faces are unticked.
  */
-export function flagNonRoofFaces(faces, insights) {
+export function flagNonRoofFaces(faces, insights, { adjacency = null } = {}) {
   const stats = insights?.solarPotential?.roofSegmentStats ?? null
   const big = (faces ?? []).filter((f) => (Number(f.areaSquareMetres) || 0) >= SMALL_M2)
   const mainHeightM = weightedMedian(big.map((f) => ({ v: planeHeight(f, stats), w: Number(f.areaSquareMetres) || 0 })))
   const mainPitch = weightedMedian(big.map((f) => ({ v: Number(f.pitchDegrees) || 0, w: Number(f.areaSquareMetres) || 0 })))
   const mainIsFlat = mainPitch !== null && mainPitch < FLAT_PITCH_DEG
+  const skirts = verandahSkirts(faces, adjacency, stats)
   return (faces ?? []).map((f) => {
     if (f.source !== 'solar-api' || f.outlineEdited) return f
     const reasons = nonRoofReasons(f, { mainHeightM, stats, mainIsFlat })
+    const skirt = skirts.get(f.segmentIndex)
+    if (skirt) reasons.unshift(skirt)
     const wall = (Number(f.pitchDegrees) || 0) >= WALL_PITCH_DEG
-    if (!wall && reasons.length < 2) return f.nonRoofLikely ? { ...f, nonRoofLikely: false, nonRoofReasons: [] } : f
+    if (!wall && !skirt && reasons.length < 2) return f.nonRoofLikely ? { ...f, nonRoofLikely: false, nonRoofReasons: [] } : f
     return { ...f, nonRoofLikely: true, nonRoofReasons: reasons, included: false }
   })
 }

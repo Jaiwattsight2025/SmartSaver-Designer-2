@@ -229,10 +229,10 @@ export async function createMapController(container) {
           editable,
           clickable: !overlays.traceListener && Boolean(opts.onSelect || editable),
           strokeColor: selected ? '#ffffff' : lowConfidence ? '#ff8a3d' : face.included ? '#ffc400' : '#a5afb9',
-          strokeOpacity: opts.dim ? 0.6 : 0.95,
-          strokeWeight: selected ? 3 : 2,
+          strokeOpacity: opts.dim ? 0.6 : face.otherRoof && !face.included && !selected ? 0.45 : 0.95,
+          strokeWeight: selected ? 3 : face.otherRoof && !face.included ? 1 : 2,
           fillColor: face.included ? '#ffc400' : '#a5afb9',
-          fillOpacity: opts.dim ? 0.06 : face.included ? 0.22 : 0.08,
+          fillOpacity: opts.dim ? 0.06 : face.included ? 0.22 : face.otherRoof ? 0.03 : 0.08,
           zIndex: selected ? 3 : 2,
         })
         if (opts.onSelect) polygon.addListener('click', () => opts.onSelect(face.id))

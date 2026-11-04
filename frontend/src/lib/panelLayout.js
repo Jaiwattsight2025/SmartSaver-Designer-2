@@ -30,6 +30,7 @@ import {
   FLAT_ROOF_MAX_PITCH_DEG,
   TILT_FRAME_DEG,
   WINTER_NOON_SUN_DEG,
+  BLOCK_MAX_ASPECT,
 } from '../config/designerConfig'
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
@@ -484,8 +485,24 @@ export function snapToCell(candidates, latLng, { exclude = [], maxM = MAX_ADDED_
 }
 
 /**
+ * How far a block is from compact: 0 up to BLOCK_MAX_ASPECT (long side over
+ * short side, in metres on the roof), then 1.5 per doubling beyond it, so one
+ * long row of 20+ panels loses to 2-3 rows.
+ */
+export function elongationCost(cells) {
+  const pts = cells.flatMap((c) => c.uv ?? [])
+  if (pts.length < 4) return 0
+  const W = Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x))
+  const H = Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y))
+  if (!(W > 0 && H > 0)) return 0
+  const aspect = Math.max(W, H) / Math.min(W, H)
+  return Math.max(0, Math.log2(aspect / BLOCK_MAX_ASPECT)) * 1.5
+}
+
+/**
  * Pick `n` spots on one face as one tidy block: full rows of the same columns,
- * from the gutter up, with at most one shorter last row. Spots you removed by
+ * from the gutter up, with at most one shorter last row. Compact blocks (2-3
+ * rows rather than one long row) are preferred when the face allows. Spots you removed by
  * hand still count as part of the shape (so one removal does not reshuffle the
  * face) but never get a panel; so do panels you placed by hand.
  */
@@ -521,7 +538,12 @@ export function chooseBlock(eligible, removed = [], n) {
         const real = pick.filter((c) => !c.removed)
         const yieldFrac = real.reduce((t, c) => t + (c.yearlyAcKwh || 0), 0) / Math.max(real.length, 1) / top
         const cost =
-          (want % wd ? 2 : 0) + (wd === 1 && want > 2 ? 3 : 0) + nr * 0.25 + (r0 - rows[0]) * 0.5 - yieldFrac * 10
+          (want % wd ? 0.5 : 0) +
+          (wd === 1 && want > 2 ? 3 : 0) +
+          elongationCost(pick) +
+          nr * 0.15 +
+          (r0 - rows[0]) * 0.5 -
+          yieldFrac * 10
         if (!best || cost < best.cost - 1e-9) best = { cost, real }
       }
     }

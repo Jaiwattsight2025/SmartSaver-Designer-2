@@ -85,3 +85,15 @@ export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 export const FLAT_ROOF_MAX_PITCH_DEG = 5 // [ASSUMPTION] below this a roof is treated as flat
 export const TILT_FRAME_DEG = 10 // [ASSUMPTION] common low-profile tilt frame
 export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] mid-winter noon sun height around Melbourne/Sydney, for row spacing
+
+/**
+ * Main-roof filter (lib/mainRoof.js) [ASSUMPTION - tuned on 7 public test roofs]:
+ * STEP_M: planes within this of each other along a shared edge are one roof (ridge/hip/valley);
+ * MIN_EDGE_M: shortest shared edge that joins two faces; WALL_EDGE_M: shortest wall that can join
+ * another storey; HOUSE_MAX_M2: above this plan area a wall step is treated as a boundary to next
+ * door; SEED_MAX_M: the locked point must be within this of a face for the filter to run.
+ */
+export const MAIN_ROOF = { STEP_M: 1.0, MIN_EDGE_M: 1.0, WALL_EDGE_M: 2.0, HOUSE_MAX_M2: 1000, SEED_MAX_M: 8 }
+
+/** Panel blocks (chooseBlock): blocks up to this long-to-short ratio count as compact. */
+export const BLOCK_MAX_ASPECT = 2

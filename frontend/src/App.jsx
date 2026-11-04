@@ -16,6 +16,7 @@ import { facesFromBuildingInsights } from './lib/roofFaces'
 import { toLocal } from './lib/geo'
 import { buildingMatchWarning, noCoverageMessage } from './lib/buildingMatch'
 import { flagNonRoofFaces } from './lib/nonRoof'
+import { markOtherRoofs } from './lib/mainRoof'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
@@ -264,10 +265,12 @@ function App() {
       setMapMessage('Tracing the roof edges from Google’s 3D roof data…')
       let faces = estimated
       let traceNote = ''
+      let adjacency = null
       const matchNote = buildingMatchWarning(target, response)
       try {
         const layers = await getRoofLayers(response)
         const traced = traceFacesFromLayers(response, layers)
+        adjacency = traced?.adjacency ?? null
         const { faces: refinedFaces, refined } = refineFacesWithDsm(estimated, traced)
         faces = refinedFaces
         traceNote = refined
@@ -279,9 +282,14 @@ function App() {
       }
       if (lockSeq.current !== seq) return
 
-      faces = flagNonRoofFaces(faces, response)
-      const flagged = faces.filter((f) => f.nonRoofLikely).length
+      faces = flagNonRoofFaces(faces, response, { adjacency })
+      // Google sometimes merges next-door roofs into one building: keep to the roof under the map centre.
+      const split = markOtherRoofs(faces, adjacency, target)
+      faces = split.faces
+      const flagged = faces.filter((f) => f.nonRoofLikely && !f.otherRoof).length
       if (flagged) traceNote += ` ${flagged} look${flagged === 1 ? 's' : ''} like a verandah or not roof, so ${flagged === 1 ? 'it is' : 'they are'} unticked.`
+      if (split.other)
+        traceNote += ` ${split.other} face${split.other === 1 ? ' is' : 's are'} on another roof (next door or a separate building) and left out - tick ${split.other === 1 ? 'it' : 'them'} in step 2 if ${split.other === 1 ? 'it is' : 'they are'} yours.`
       actions.setRoofFaces(faces)
       mapRef.current?.fitToFaces(faces)
       setStatus({ label: 'Roof loaded', tone: 'success' })

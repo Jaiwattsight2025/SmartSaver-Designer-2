@@ -745,6 +745,64 @@ export function polygonQuality(polygon, k, labelled, raster) {
   return { iou: union ? inter / union : 0, onBuilding: polyCount ? polyOnBuilding / polyCount : 0 }
 }
 
+/* ------------------------------------------------------------ adjacency */
+
+/**
+ * Which faces touch, and how. For every pair of labelled pixels of different
+ * faces within `reachPx` of each other (so a thin unlabelled crease or gutter
+ * does not split them), compare the two faces' planes at that spot: a ridge,
+ * hip or valley has the planes meeting (small step); a wall between a lower
+ * and upper roof shows as a height step. Returns
+ * [{ a, b, contacts, stepM (median plane gap), lenM (shared edge length) }]
+ * with a < b as face indices k.
+ */
+export function faceAdjacency(labelled, raster, { reachPx = 2 } = {}) {
+  const { label, planes, centres } = labelled
+  const { width: w, height: h, frame } = raster
+  const pairs = new Map()
+  const offs = []
+  for (let dy = 0; dy <= reachPx; dy += 1) {
+    for (let dx = -reachPx; dx <= reachPx; dx += 1) {
+      if (dy === 0 && dx <= 0) continue
+      if (dx * dx + dy * dy <= reachPx * reachPx) offs.push([dx, dy])
+    }
+  }
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = y * w + x
+      const a = label[i]
+      if (a < 0) continue
+      for (const [dx, dy] of offs) {
+        const xx = x + dx
+        const yy = y + dy
+        if (xx < 0 || xx >= w || yy >= h) continue
+        const j = yy * w + xx
+        const b = label[j]
+        if (b < 0 || b === a) continue
+        const k0 = Math.min(a, b)
+        const k1 = Math.max(a, b)
+        const key = k0 * 65536 + k1
+        let e = pairs.get(key)
+        if (!e) { e = { a: k0, b: k1, steps: [], cells: new Set() }; pairs.set(key, e) }
+        const mx = (centres[2 * i] + centres[2 * j]) / 2
+        const my = (centres[2 * i + 1] + centres[2 * j + 1]) / 2
+        e.steps.push(Math.abs(planeZ(planes[a], mx, my) - planeZ(planes[b], mx, my)))
+        e.cells.add(i)
+      }
+    }
+  }
+  return [...pairs.values()].map((e) => {
+    e.steps.sort((p, q) => p - q)
+    return {
+      a: e.a,
+      b: e.b,
+      contacts: e.steps.length,
+      stepM: e.steps[Math.floor(e.steps.length / 2)],
+      lenM: e.cells.size * frame.pixelSize,
+    }
+  })
+}
+
 /**
  * Whole pipeline. `segments` as for labelRoof. Returns per segment:
  * { index, polygon (local metres, CCW), confidence, metrics }.
@@ -757,6 +815,7 @@ export function roofFacesFromDsm(raster, segments, opts = {}) {
   return {
     planes: labelled.planes,
     residualOverlaps: residual,
+    adjacency: faceAdjacency(labelled, raster).map((e) => ({ ...e, a: segments[e.a].index, b: segments[e.b].index })),
     faces: faces.map((f) => {
       const st = labelled.stats[f.k]
       const q = polygonQuality(f.polygon, f.k, labelled, raster)

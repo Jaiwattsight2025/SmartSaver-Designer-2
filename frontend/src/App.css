@@ -1415,7 +1415,8 @@ details.solar-panel summary::-webkit-details-marker {
   }
 }
 
-.outline-badge.non-roof {
+.outline-badge.non-roof,
+.outline-badge.other-roof {
   margin-left: 6px;
 }
 

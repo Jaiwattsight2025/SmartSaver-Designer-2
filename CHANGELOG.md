@@ -1,5 +1,20 @@
 # Changelog
 
+## [designer-v2] – 2026-11-05 – D2.4: main roof only, compact panel blocks, raised verandahs
+
+- Main roof: when Google merges a complex (or next door) into one building, the 3D roof data is used to find
+  which faces join the roof under the locked point. Faces meet if their planes line up along a shared edge (step
+  under 1 m); a step of 1 m or more along 2 m+ is a wall. A house-sized main roof (up to 1000 m²) keeps roofs
+  behind a wall (a lower storey); a bigger one treats them as next door. Faces not joined at all are a separate
+  building. Those faces are unticked, dimmed on the map and badged "Other roof - tick to include" with the reason.
+  Fixes panels landing on the lower neighbour at the Bunnings test site and on the separate block at Labassa.
+- Compact blocks: on each face the layout now prefers near-square blocks (2-3 rows) to one long row; a block
+  longer than twice its depth costs extra (BLOCK_MAX_ASPECT in designerConfig.js) and a short last row costs less.
+- Raised verandahs: a flatter face creased onto a steeper face at least 1.2 m higher (14°+ pitch difference) is
+  flagged as a likely verandah on its own and unticked (Queenslander wrap-arounds at the Newstead test site).
+- roofFacesFromDsm now also returns `adjacency` ([{ a, b, stepM, lenM }]) between traced faces.
+- Settings (assumptions): MAIN_ROOF in designerConfig.js; skirt thresholds in nonRoof.js.
+
 ## [designer-v2] – 2026-11-05 – D2.3: checked on six public roof types (two-storey, verandahs, flat, hip, gable, rural)
 
 - Wrong building: if Google's nearest building is more than 3 m from the centre of the map, the lock message says

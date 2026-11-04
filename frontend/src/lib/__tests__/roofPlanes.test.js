@@ -71,6 +71,32 @@ describe('roofPlanes', () => {
     expect(Math.abs(line.c)).toBeLessThan(0.01)
   })
 
+  it('reports which faces meet and how big the step is', () => {
+    const out = roofFacesFromDsm(makeRaster(), SEGMENTS)
+    const e02 = out.adjacency.find((e) => (e.a === 0 && e.b === 2) || (e.a === 2 && e.b === 0))
+    expect(e02).toBeTruthy()
+    expect(e02.stepM).toBeLessThan(0.3) // a hip crease, not a wall
+    expect(e02.lenM).toBeGreaterThan(2)
+    // A two-storey house: the east half is raised 2.5 m above a west lean-to.
+    const r = makeRaster()
+    const stepSegs = [
+      { index: 0, center: { x: -3, y: 0 }, pitchDegrees: 10, azimuthDegrees: 0, heightM: 0, areaM2: 48, box: { x0: -6, x1: 0, y0: -4, y1: 4 } },
+      { index: 1, center: { x: 3, y: 0 }, pitchDegrees: 10, azimuthDegrees: 0, heightM: 0, areaM2: 48, box: { x0: 0, x1: 6, y0: -4, y1: 4 } },
+    ]
+    const t10 = Math.tan((10 * Math.PI) / 180)
+    for (let v = 0; v < H; v += 1) {
+      for (let u = 0; u < W; u += 1) {
+        const { x, y } = frame.toLocal(u + 0.5, v + 0.5)
+        if (Math.abs(x) <= 6 && Math.abs(y) <= 4) r.dsm[v * W + u] = (x < 0 ? 3 : 5.5) + t10 * (4 - y)
+      }
+    }
+    stepSegs[0].heightM = 3 + t10 * 4
+    stepSegs[1].heightM = 5.5 + t10 * 4
+    const st = roofFacesFromDsm(r, stepSegs)
+    const e = st.adjacency.find((x) => x.a !== x.b)
+    expect(e).toBeTruthy()
+    expect(e.stepM).toBeGreaterThan(2)
+  })
   it('traces four clean hip faces on the building only', () => {
     const out = roofFacesFromDsm(makeRaster(), SEGMENTS)
     expect(out.faces).toHaveLength(4)

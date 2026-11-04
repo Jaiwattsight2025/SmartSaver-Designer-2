@@ -37,6 +37,12 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
                     : 'Outline: rough - please adjust'}
             </span>
           )}
+          {face.otherRoof && (
+            <span className="outline-badge low other-roof" data-testid="other-roof" title={face.otherRoofReason ?? ''}>
+              Other roof - tick to include
+            </span>
+          )}
+          {face.otherRoof && <small className="non-roof-why">Left out: {face.otherRoofReason}.</small>}
           {face.nonRoofLikely && (
             <span className="outline-badge low non-roof" title={(face.nonRoofReasons ?? []).join('; ')}>
               Possibly verandah/not roof
