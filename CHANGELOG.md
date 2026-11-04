@@ -1,5 +1,22 @@
 # Changelog
 
+## [designer-v2] – 2026-11-05 – D2.3: checked on six public roof types (two-storey, verandahs, flat, hip, gable, rural)
+
+- Wrong building: if Google's nearest building is more than 3 m from the centre of the map, the lock message says
+  how far away it is and to press Reposition, centre the roof and lock again (findClosest often picks a shed or a
+  neighbour when the pin sits in a garden or car park).
+- No coverage: a 404 from Google now reads "Google has no 3D roof data for this spot (common in rural and new
+  areas). You can trace your roof yourself in step 2" instead of "Requested entity was not found".
+- Flat roofs (under 5°): panels go on 10° tilt frames facing north (rows snap to a building edge within 25° of
+  north), with rows spaced for the winter-noon shadow (about 0.5 m for a 1.7 m panel). Yields use the tilted
+  panel, Google's flush figures get the same gain so flat faces are ranked fairly, and the panel notes say so.
+  Settings in designerConfig.js: FLAT_ROOF_MAX_PITCH_DEG, TILT_FRAME_DEG, WINTER_NOON_SUN_DEG (assumptions).
+- Non-roof flags: "nearly flat" no longer counts when the main roof is itself flat (warehouses, flat-roof homes);
+  "below the main roof" is only used when the ground height is unknown or implausible (under 0.5 m or negative),
+  so the lower roof of a two-storey home is no longer mistaken for a verandah; faces steeper than 60° (walls,
+  parapets) are flagged on their own.
+- Dev only: window.__ssdMap.centreOn({ lat, lng }) for the multi-address e2e.
+
 ## [designer-v2] – 2026-11-05 – D2.2: no odd single panels, verandah/non-roof faces left out
 
 - Panel filler now places whole rectangular blocks on each face (full rows from the gutter, last row may be partial)
