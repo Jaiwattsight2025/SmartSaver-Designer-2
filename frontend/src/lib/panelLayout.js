@@ -62,6 +62,14 @@ export function mountFor(face) {
   return { flat: false, tiltDeg: pitch, azimuthDeg: Number(face?.azimuthDegrees) || 0 }
 }
 
+/** Output gain of a tilt frame over Google's flush-mounted estimate on a flat face (1 for pitched faces). */
+export function tiltFrameGain(face) {
+  const m = mountFor(face)
+  if (!m.flat) return 1
+  const flush = orientationFactor(face.pitchDegrees, face.azimuthDegrees)
+  return flush > 0 ? orientationFactor(m.tiltDeg, m.azimuthDeg) / flush : 1
+}
+
 /** Gap needed behind a tilted row of slope length `lengthM` so it does not shade the next row at winter noon. */
 export function tiltRowShadowGapM(lengthM, tiltDeg = TILT_FRAME_DEG, sunDeg = WINTER_NOON_SUN_DEG) {
   return (lengthM * Math.sin(tiltDeg * RAD)) / Math.tan(sunDeg * RAD)
@@ -262,13 +270,15 @@ export function layoutPanels({
   for (const face of included) {
     const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM })
     // Yield from Google's nearest panel spot on this segment, else the segment mean, else the state average.
+    // Google's figures are for flush panels; flat faces get the tilt-frame gain.
+    const gain = tiltFrameGain(face)
     const gp =
       face.source === 'solar-api' && Number.isInteger(face.segmentIndex)
         ? solarPanels
             .filter((p) => p.segmentIndex === face.segmentIndex && toLatLng(p.center))
             .map((p) => ({
               uv: toFaceUV(toLocal(frame.origin, toLatLng(p.center)), frame.axes),
-              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE,
+              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE * gain,
             }))
         : []
     const mean = gp.length ? gp.reduce((s, p) => s + p.ac, 0) / gp.length : null

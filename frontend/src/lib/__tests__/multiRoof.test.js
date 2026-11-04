@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { flagNonRoofFaces } from '../nonRoof'
 import { buildingMatch, buildingMatchWarning, noCoverageMessage } from '../buildingMatch'
-import { fillFace, layoutPanels, mountFor, panelFootprint, tiltRowShadowGapM, validateLayout } from '../panelLayout'
+import { fillFace, layoutPanels, mountFor, panelFootprint, tiltFrameGain, tiltRowShadowGapM, validateLayout } from '../panelLayout'
 import { manualFace } from '../roofFaces'
 import { offset } from '../geo'
 
@@ -86,6 +86,22 @@ describe('flat roofs use north-facing tilt frames', () => {
     expect(l.count).toBe(20)
     expect(l.notes.join(' ')).toMatch(/tilt frames facing north/)
     expect(validateLayout(l, [flat]).ok).toBe(true)
+  })
+  it("Google's flush yields on a flat face are raised for the tilt frame, so flat roofs are not ranked unfairly", () => {
+    expect(tiltFrameGain({ pitchDegrees: 1, azimuthDegrees: 200 })).toBeGreaterThan(1.03)
+    expect(tiltFrameGain({ pitchDegrees: 22, azimuthDegrees: 0 })).toBe(1)
+    const seg = { ...flat, id: 'seg-0', source: 'solar-api', segmentIndex: 0 }
+    const insights = {
+      solarPotential: {
+        panelCapacityWatts: 400,
+        panelHeightMeters: 1.879,
+        panelWidthMeters: 1.045,
+        solarPanels: [{ segmentIndex: 0, center: { latitude: seg.center.lat, longitude: seg.center.lng }, yearlyEnergyDcKwh: 500 }],
+      },
+    }
+    const l = layoutPanels({ insights, faces: [seg], panelCount: 4, moduleWatts: 400, state: 'VIC' })
+    expect(l.count).toBe(4)
+    for (const p of l.panels) expect(p.yearlyAcKwh).toBeCloseTo(500 * 0.85 * tiltFrameGain(seg), 1)
   })
   it('pitched faces are unchanged (no tilt-frame note)', () => {
     const pitched = manualFace({ id: 'p', label: 'p', vertices: rectV(o, 10, 6), pitchDegrees: 20, azimuthDegrees: 0 })
