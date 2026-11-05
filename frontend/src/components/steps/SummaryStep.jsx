@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
-import { PRICES_ARE_PLACEHOLDERS, QUOTE_URL, SHOP_PRODUCTS_URL } from '../../config/pricing'
+import { PRICES_ARE_PLACEHOLDERS, SHOP_PRODUCTS_URL, SOLAR_BATTERIES_URL } from '../../config/pricing'
+import { buildQuoteUrl, pickShopLinks } from '../../lib/shopifyHandoff'
 import { buildDesignJson, buildSummaryText } from '../../lib/designSummary'
 import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
 import ValidationList from '../ValidationList'
@@ -15,6 +16,7 @@ function useSummaryData() {
 export default function SummaryStep() {
   const { design, pv, profile, roofFaces } = useSummaryData()
   const [note, setNote] = useState('')
+  const shopLinks = pickShopLinks({ profile, design })
 
   const copySummary = async () => {
     try {
@@ -28,8 +30,10 @@ export default function SummaryStep() {
   }
 
   const getQuote = async () => {
+    // Open synchronously (popup blockers), then copy as fallback for themes that ignore the prefill.
+    const summaryText = buildSummaryText({ profile, design, pv })
+    window.open(buildQuoteUrl({ summaryText }), '_blank', 'noopener')
     await copySummary()
-    window.open(QUOTE_URL, '_blank', 'noopener')
   }
 
   const downloadJson = () => {
@@ -67,9 +71,22 @@ export default function SummaryStep() {
       <button type="button" className="primary-button" onClick={getQuote} disabled={design.layout.count === 0}>
         Get a quote
       </button>
-      <a className="secondary-button as-link" href={SHOP_PRODUCTS_URL} target="_blank" rel="noopener noreferrer">
-        Shop energy-saving products
-      </a>
+      <div className="next-steps">
+        <strong>Next steps for your home</strong>
+        {shopLinks
+          .filter((l) => l.href !== SOLAR_BATTERIES_URL)
+          .map((l) => (
+            <a key={l.id} className="secondary-button as-link" href={l.href} target="_blank" rel="noopener noreferrer" title={l.reason}>
+              {l.label}
+            </a>
+          ))}
+        <a className="secondary-button as-link" href={SOLAR_BATTERIES_URL} target="_blank" rel="noopener noreferrer">
+          View solar &amp; battery packages
+        </a>
+        <a className="link-button as-link" href={SHOP_PRODUCTS_URL} target="_blank" rel="noopener noreferrer">
+          Browse energy-saving products
+        </a>
+      </div>
       <div className="two-column-buttons">
         <button type="button" className="secondary-button" onClick={() => window.print()}>
           Print / save PDF
@@ -83,7 +100,7 @@ export default function SummaryStep() {
       </button>
       {note && <div className="info-box">{note}</div>}
       {PRICES_ARE_PLACEHOLDERS && (
-        <small className="hint">The shop and quote links go to the SmartSaver store, which is not open to the public yet.</small>
+        <small className="hint">The quote page and shop links go to the SmartSaver store, which is still password-protected until launch. Use the store password to view them.</small>
       )}
     </div>
   )
