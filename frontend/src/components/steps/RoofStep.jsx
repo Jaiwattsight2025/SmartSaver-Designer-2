@@ -164,7 +164,7 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
     setTraceKind(kind)
     setTracePoints([])
     setSplitError('')
-    const color = kind === 'obstacle' ? '#ff4d4f' : kind === 'split' ? '#ffffff' : '#65d487'
+    const color = kind === 'obstacle' ? '#ff4d4f' : kind === 'split' ? '#ffffff' : '#20a97c'
     map.startTracing(
       (pts) => {
         setTracePoints(pts)

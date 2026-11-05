@@ -228,10 +228,10 @@ export async function createMapController(container) {
           paths: face.vertices,
           editable,
           clickable: !overlays.traceListener && Boolean(opts.onSelect || editable),
-          strokeColor: selected ? '#ffffff' : lowConfidence ? '#ff8a3d' : face.included ? '#ffc400' : '#a5afb9',
+          strokeColor: selected ? '#ffffff' : lowConfidence ? '#ff8a3d' : face.included ? '#f5a623' : '#a5afb9',
           strokeOpacity: opts.dim ? 0.6 : face.otherRoof && !face.included && !selected ? 0.45 : 0.95,
           strokeWeight: selected ? 3 : face.otherRoof && !face.included ? 1 : 2,
-          fillColor: face.included ? '#ffc400' : '#a5afb9',
+          fillColor: face.included ? '#f5a623' : '#a5afb9',
           fillOpacity: opts.dim ? 0.06 : face.included ? 0.22 : face.otherRoof ? 0.03 : 0.08,
           zIndex: selected ? 3 : 2,
         })
@@ -330,7 +330,7 @@ export async function createMapController(container) {
     },
 
     /** Click points on the map to outline a roof face. onChange(points) after each click. */
-    startTracing(onChange, { color = '#65d487' } = {}) {
+    startTracing(onChange, { color = '#20a97c' } = {}) {
       controller.cancelTracing()
       overlays.faces.forEach((p) => p.setOptions({ clickable: false, editable: false }))
       overlays.panels.forEach((p) => p.setOptions({ clickable: false }))

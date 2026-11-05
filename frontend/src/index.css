@@ -1,9 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
 :root {
-  font-family: Inter, Arial, Helvetica, sans-serif;
-  color: #f4f6f8;
-  background: #0f1216;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #1a3c34;
+  background: #f5f8f7;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -13,7 +11,7 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: #0f1216;
+  background: #f5f8f7;
 }
 
 body {
