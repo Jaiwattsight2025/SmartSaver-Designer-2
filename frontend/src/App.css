@@ -1079,6 +1079,40 @@ button:disabled {
   margin-top: 8px;
 }
 
+.face-edit-azimuth {
+  grid-template-columns: 1fr auto;
+}
+
+.face-mount {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.face-mount .pitch-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.face-mount .pitch-row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.face-mount .count-row {
+  grid-template-columns: 32px 1fr 32px;
+}
+
+.face-mount .outline-badge {
+  margin-bottom: 4px;
+}
+
 .face-edit label {
   display: flex;
   flex-direction: column;

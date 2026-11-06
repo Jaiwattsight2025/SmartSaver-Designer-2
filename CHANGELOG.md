@@ -1,5 +1,20 @@
 # Changelog
 
+## [designer-v2] – 2026-11-06 – Per-face pitch and install type
+
+- Each included roof face on the confirm-roof step has a pitch control (degrees, with − / +) and an install
+  type: Flush (flat on the roof) or Tilt frames. A pitch under 5° is badged "Flat roof" — the same cut the
+  layout already uses (FLAT_ROOF_MAX_PITCH_DEG).
+- The pitch is the one already stored from Google's roof segment. Near-flat faces default to tilt frames
+  (10° facing north, rows spaced for winter shade). Pitched faces default to flush. The note says the value
+  was detected and can be changed.
+- Changing the pitch updates the sloped area and, until the customer has picked an install type themselves,
+  switches flush / tilt with the 5° rule. A chosen install type stays put if they edit the pitch afterwards,
+  and both stay on the face for the rest of the session (including untick and tick again).
+- Panel rows, setback checks and yield use that choice. Flush on a flat face no longer gets the tilt-frame
+  gain. Tilt frames on a pitched face use the same north-facing frame model as a flat roof.
+- Still fixed, not per face: tilt-frame angle (10°), tilt-frame direction (north), and winter sun height (29°).
+
 ## [designer-v2] – 2026-11-06 – D2.5: roof and panel reliability
 
 - Separate buildings with no 3D join are left out. If Google never records an edge between faces

@@ -1,5 +1,6 @@
 /* The downloadable design ("smartsaver-design" v1) and a plain-text summary. */
 import { MONTHS } from '../config/designerConfig'
+import { installTypeOf } from './roofFaces'
 
 export const DESIGN_FORMAT = 'smartsaver-design'
 export const DESIGN_VERSION = 1
@@ -32,6 +33,7 @@ export function buildDesignJson({ profile, design, pv, roofFaces, now = new Date
         label: f.label,
         source: f.source,
         pitchDegrees: f.pitchDegrees,
+        installType: installTypeOf(f),
         azimuthDegrees: f.azimuthDegrees,
         orientation: f.orientation,
         areaM2: r1(f.areaSquareMetres),

@@ -28,7 +28,6 @@ import {
   ROOF_EDGE_SETBACK_M,
   ROW_GAP_M,
   SMALL_SYSTEM_PANELS,
-  FLAT_ROOF_MAX_PITCH_DEG,
   TILT_FRAME_DEG,
   WINTER_NOON_SUN_DEG,
   BLOCK_MAX_ASPECT,
@@ -36,7 +35,7 @@ import {
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
 import { faceAxes, fromFaceUV, toFaceUV } from './roofOutline'
-import { googlePanelSize } from './roofFaces'
+import { googlePanelSize, installTypeOf } from './roofFaces'
 import { stateYield } from './energyModel'
 
 const RAD = Math.PI / 180
@@ -54,13 +53,15 @@ export function moduleSize(watts) {
 }
 
 /**
- * How panels sit on a face. Pitched roofs: flush, following the roof.
- * Flat roofs (under FLAT_ROOF_MAX_PITCH_DEG): on tilt frames facing north, with
- * rows spaced so one row does not shade the next at winter noon.
+ * How panels sit on a face.
+ * Tilt frames (the default under FLAT_ROOF_MAX_PITCH_DEG, or when the customer
+ * picks them): 10° frames facing north, rows spaced for the winter shadow.
+ * Flush: panels follow this face's pitch and direction, including on a flat roof
+ * when the customer chose flush.
  */
 export function mountFor(face) {
   const pitch = Number(face?.pitchDegrees) || 0
-  if (pitch < FLAT_ROOF_MAX_PITCH_DEG) return { flat: true, tiltDeg: TILT_FRAME_DEG, azimuthDeg: 0 }
+  if (installTypeOf(face) === 'tilt') return { flat: true, tiltDeg: TILT_FRAME_DEG, azimuthDeg: 0 }
   return { flat: false, tiltDeg: pitch, azimuthDeg: Number(face?.azimuthDegrees) || 0 }
 }
 
@@ -446,7 +447,7 @@ export function layoutPanels({
   const flatIds = new Set(included.filter((f) => mountFor(f).flat).map((f) => f.id))
   if (panels.some((p) => flatIds.has(p.faceId)))
     notes.push(
-      `Flat roof: panels are on ${TILT_FRAME_DEG}° tilt frames facing north, with rows spaced so they do not shade each other in winter.`,
+      `Tilt frames: panels are on ${TILT_FRAME_DEG}° tilt frames facing north, with rows spaced so they do not shade each other in winter.`,
     )
   const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
   const sources = new Set(panels.map((p) => p.source))

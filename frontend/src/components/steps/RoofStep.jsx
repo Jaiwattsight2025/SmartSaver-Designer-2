@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
-import { editedOutline, editedPitch, faceOverlaps, manualFace, roofTotals, splitFace } from '../../lib/roofFaces'
+import { FLAT_ROOF_MAX_PITCH_DEG, TILT_FRAME_DEG } from '../../config/designerConfig'
 import { no3dRoofNote } from '../../lib/buildingMatch'
+import {
+  editedInstall,
+  editedOutline,
+  editedPitch,
+  faceOverlaps,
+  installTypeOf,
+  isFlatPitch,
+  manualFace,
+  mountHint,
+  roofTotals,
+  splitFace,
+} from '../../lib/roofFaces'
 
 function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline, onSplit }) {
   return (
@@ -58,18 +70,11 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
           {selected && <small>Drag the white corner dots on the map to match the roof edges.</small>}
         </div>
       )}
-      {selected && face.source === 'solar-api' && (
+      {face.included && (
+        <FaceMount face={face} onUpdate={onUpdate} />
+      )}
+      {selected && face.source === 'solar-api' && (face.originalVertices || face.estimateVertices) && (
         <div className="face-edit" onClick={(e) => e.stopPropagation()}>
-          <label>
-            Pitch °
-            <input
-              type="number"
-              min="0"
-              max="60"
-              value={face.pitchDegrees}
-              onChange={(e) => onUpdate(editedPitch(face, e.target.value), true)}
-            />
-          </label>
           {face.outlineEdited && face.originalVertices && (
             <button type="button" className="link-button" onClick={onResetOutline}>
               Reset outline
@@ -90,17 +95,7 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
         </div>
       )}
       {face.source === 'manual' && selected && (
-        <div className="face-edit" onClick={(e) => e.stopPropagation()}>
-          <label>
-            Pitch °
-            <input
-              type="number"
-              min="0"
-              max="60"
-              value={face.pitchDegrees}
-              onChange={(e) => onUpdate({ pitchDegrees: Number(e.target.value) })}
-            />
-          </label>
+        <div className="face-edit face-edit-azimuth" onClick={(e) => e.stopPropagation()}>
           <label>
             Faces
             <select value={face.azimuthDegrees} onChange={(e) => onUpdate({ azimuthDegrees: Number(e.target.value) })}>
@@ -370,6 +365,75 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             Confirm roof
           </button>
         ))}
+    </div>
+  )
+}
+
+export function FaceMount({ face, onUpdate }) {
+  const install = installTypeOf(face)
+  const setPitch = (value) => onUpdate(editedPitch(face, value), true)
+  const setInstall = (kind) => onUpdate(editedInstall(face, kind), true)
+  return (
+    <div className="face-mount" onClick={(e) => e.stopPropagation()}>
+      <div className="pitch-row">
+        <label>
+          Pitch °
+          <span className="count-row">
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label={`Lower the pitch of ${face.label}`}
+              onClick={() => setPitch((Number(face.pitchDegrees) || 0) - 1)}
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min="0"
+              max="60"
+              step="0.5"
+              value={face.pitchDegrees}
+              aria-label={`Pitch of ${face.label} in degrees`}
+              onChange={(e) => setPitch(e.target.value)}
+            />
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label={`Raise the pitch of ${face.label}`}
+              onClick={() => setPitch((Number(face.pitchDegrees) || 0) + 1)}
+            >
+              +
+            </button>
+          </span>
+        </label>
+        {isFlatPitch(face.pitchDegrees) && (
+          <span className="outline-badge low" title={`Under ${FLAT_ROOF_MAX_PITCH_DEG}° is a flat roof`}>
+            Flat roof
+          </span>
+        )}
+      </div>
+      <div className="two-column-buttons" role="group" aria-label={`How panels sit on ${face.label}`}>
+        <button
+          type="button"
+          className={install === 'flush' ? 'primary-button' : 'secondary-button'}
+          aria-pressed={install === 'flush'}
+          onClick={() => setInstall('flush')}
+        >
+          Flush
+        </button>
+        <button
+          type="button"
+          className={install === 'tilt' ? 'primary-button' : 'secondary-button'}
+          aria-pressed={install === 'tilt'}
+          onClick={() => setInstall('tilt')}
+        >
+          Tilt frames
+        </button>
+      </div>
+      <small className="hint">
+        Flush sits flat on the roof. Tilt frames are {TILT_FRAME_DEG}° and face north.
+      </small>
+      <small className="hint">{mountHint(face)}</small>
     </div>
   )
 }

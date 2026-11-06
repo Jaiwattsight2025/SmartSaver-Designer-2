@@ -4,6 +4,7 @@ import { useDesign } from '../../hooks/useDesign'
 import { PRICES_ARE_PLACEHOLDERS, SHOP_PRODUCTS_URL, SOLAR_BATTERIES_URL } from '../../config/pricing'
 import { buildQuoteUrl, pickShopLinks } from '../../lib/shopifyHandoff'
 import { buildDesignJson, buildSummaryText } from '../../lib/designSummary'
+import { installTypeOf } from '../../lib/roofFaces'
 import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
 import ValidationList from '../ValidationList'
 
@@ -143,7 +144,11 @@ export function SummaryReport() {
               <tr>
                 <td>Roof faces used</td>
                 <td>
-                  {used.length ? used.map((f) => `${f.orientation} ${f.pitchDegrees}°`).join(', ') : '—'}
+                  {used.length
+                    ? used
+                        .map((f) => `${f.orientation} ${f.pitchDegrees}° ${installTypeOf(f) === 'tilt' ? 'tilt frames' : 'flush'}`)
+                        .join(', ')
+                    : '—'}
                 </td>
               </tr>
               <tr>
