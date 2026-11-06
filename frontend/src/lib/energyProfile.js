@@ -1,12 +1,13 @@
 /*
  * Read the customer's bill numbers ("energy profile") into the Designer.
  *
- * Three ways in, one validator:
- *   1. Wattsight "Design my system" link  -> query string (or #hash) keys, see
- *      Wattsight\platform\docs\ENERGY_PROFILE.md
- *   2. Wattsight results file (.json, format "wattsight-results" v1) or a bare
- *      energy profile JSON (/results/<id>/profile.json)
- *   3. Manual entry in the Designer
+ * Two ways in, one validator:
+ *   1. Energy Insights handoff redeem body: profile.json (source "wattsight")
+ *      or a wattsight-results wrapper. Parsed here, never taken from the page URL.
+ *   2. Manual entry in the Designer
+ *
+ * profileFromUrl still validates the old flat keys for tests. The app must not
+ * call it: bill numbers in the query or hash are not accepted.
  *
  * Nothing here is trusted: every number is type- and range-checked, unknown
  * keys are ignored and the profile never contains name / street address / NMI.
@@ -172,12 +173,16 @@ export function validateProfileParams(params, source = 'wattsight') {
   return { profile, warnings }
 }
 
-/** Read a profile from the page URL (query string or #hash). Returns null if none. */
+/**
+ * Flat-key validator used by tests. Not a runtime entry.
+ * Returns null for `#handoff=` and `profile_url` so a page URL cannot carry bill data.
+ */
 export function profileFromUrl(search = '', hash = '') {
   for (const raw of [search, hash]) {
     const text = String(raw || '').replace(/^[?#]/, '')
     if (!text) continue
     const params = new URLSearchParams(text)
+    if (params.has('handoff') || params.has('profile_url')) return null
     const looksLikeProfile =
       params.get('src') === 'wattsight' || params.has('kwh_yr') || params.has('kwh_day')
     if (looksLikeProfile) return validateProfileParams(params, 'wattsight')

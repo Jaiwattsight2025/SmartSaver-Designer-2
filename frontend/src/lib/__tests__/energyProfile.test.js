@@ -39,6 +39,12 @@ describe('profileFromUrl', () => {
     expect(profileFromUrl('', '')).toBeNull()
   })
 
+  it('does not accept a handoff token or a profile_url as bill data', () => {
+    expect(profileFromUrl('', '#handoff=abcdefghijklmnop')).toBeNull()
+    expect(profileFromUrl('?profile_url=https://evil.example/profile.json&kwh_yr=5000', '')).toBeNull()
+    expect(profileFromUrl('', '#handoff=abcdefghijklmnop&kwh_yr=5000')).toBeNull()
+  })
+
   it('drops out-of-range or junk values with a warning and uses defaults', () => {
     const { profile, warnings } = profileFromUrl('?src=wattsight&kwh_day=20&rate=9&fit=abc&st=XX&pc=31470&ret=<script>')
     expect(profile.annualKwh).toBe(7300)

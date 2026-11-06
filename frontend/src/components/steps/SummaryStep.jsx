@@ -3,19 +3,19 @@ import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
 import { PRICES_ARE_PLACEHOLDERS, SHOP_PRODUCTS_URL, SOLAR_BATTERIES_URL } from '../../config/pricing'
 import { buildQuoteUrl, pickShopLinks } from '../../lib/shopifyHandoff'
-import { buildDesignJson, buildSummaryText } from '../../lib/designSummary'
+import { buildSummaryText } from '../../lib/designSummary'
 import { installTypeOf } from '../../lib/roofFaces'
 import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
 import ValidationList from '../ValidationList'
 
 function useSummaryData() {
-  const { building, designSnapshot } = useProject()
-  const { design, pv, profile, state } = useDesign()
-  return { design, pv, profile, roofFaces: building.roofFaces, designSnapshot, state, latitude: building.location?.lat ?? null, confirmed: Boolean(building.roofModelAccepted) }
+  const { building } = useProject()
+  const { design, pv, profile } = useDesign()
+  return { design, pv, profile, roofFaces: building.roofFaces }
 }
 
 export default function SummaryStep() {
-  const { design, pv, profile, roofFaces, designSnapshot, latitude, confirmed } = useSummaryData()
+  const { design, pv, profile } = useSummaryData()
   const [note, setNote] = useState('')
   const shopLinks = pickShopLinks({ profile, design })
 
@@ -25,7 +25,7 @@ export default function SummaryStep() {
       setNote('Summary copied. Paste it into the quote form.')
       return true
     } catch {
-      setNote('Could not copy automatically. Use Download summary instead.')
+      setNote('Could not copy automatically. Use Print / save PDF instead.')
       return false
     }
   }
@@ -35,27 +35,6 @@ export default function SummaryStep() {
     const summaryText = buildSummaryText({ profile, design, pv })
     window.open(buildQuoteUrl({ summaryText }), '_blank', 'noopener')
     await copySummary()
-  }
-
-  const downloadJson = () => {
-    const json = buildDesignJson({
-      profile,
-      design,
-      pv,
-      roofFaces,
-      latitude,
-      confirmed,
-      snapshot: designSnapshot ?? undefined,
-    })
-    const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `smartsaver-design-${profile?.postcode ?? 'system'}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   return (
@@ -96,14 +75,9 @@ export default function SummaryStep() {
           Browse energy-saving products
         </a>
       </div>
-      <div className="two-column-buttons">
-        <button type="button" className="secondary-button" onClick={() => window.print()}>
-          Print / save PDF
-        </button>
-        <button type="button" className="secondary-button" onClick={downloadJson}>
-          Download summary
-        </button>
-      </div>
+      <button type="button" className="secondary-button" onClick={() => window.print()}>
+        Print / save PDF
+      </button>
       <button type="button" className="link-button" onClick={copySummary}>
         Copy summary text
       </button>

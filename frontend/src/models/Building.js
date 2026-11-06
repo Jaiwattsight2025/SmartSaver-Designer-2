@@ -11,6 +11,8 @@ export function createEmptyBuilding() {
     selectedRoofFaceId: null,
     roofModelAccepted: false,
     solar: {
+      // Internal only. Means no Solar lookup has run. Never render this string:
+      // customers see the map message and the roof-step wording for this property.
       status: 'Not tested',
       summary: null,
       response: null,

@@ -20,6 +20,7 @@ import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
 import { buildDesignSnapshot } from './lib/designSnapshot'
+import { consumeHandoffToken, redeemDesignerHandoff } from './lib/designerHandoff'
 import { SYNTHETIC_BANNER } from './lib/syntheticFixture'
 
 const syntheticPreview =
@@ -80,7 +81,7 @@ function App() {
 
   const { building, energyProfile, actions, project } = useProject()
   const { design, state: designState } = useDesign()
-  const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, solar, roofFaces, selectedRoofFaceId } =
+  const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, roofFaces, selectedRoofFaceId } =
     building
 
   const activeIndex = useMemo(() => steps.findIndex((step) => step.id === activeStep), [activeStep])
@@ -93,6 +94,22 @@ function App() {
   const designChoices = project.design
   const roofConfirmed = Boolean(building.roofModelAccepted)
   const snapKey = useRef('')
+
+  useEffect(() => {
+    const token = consumeHandoffToken()
+    if (!token) return undefined
+    let cancelled = false
+    redeemDesignerHandoff(token)
+      .then((result) => {
+        if (!cancelled) actions.applyHandoffSuccess(result)
+      })
+      .catch((error) => {
+        if (!cancelled) actions.applyHandoffError(error?.message || 'Energy Insights could not be reached. Enter your bill numbers.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [actions])
 
   useEffect(() => {
     if (!roofConfirmed) {
@@ -500,53 +517,6 @@ function App() {
                       </small>
                     </div>
                   )}
-
-                  <details className="solar-panel">
-                    <summary className="solar-panel-heading">
-                      <span>GOOGLE ROOF DATA</span>
-                      <strong>{solar.status}</strong>
-                    </summary>
-
-                    <div className="solar-metrics">
-                      <div>
-                        <span>HTTP status</span>
-                        <strong>{solar.summary?.httpStatus ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Roof segments</span>
-                        <strong>{solar.summary?.roofSegments ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Whole roof area</span>
-                        <strong>{solar.summary ? `${solar.summary.wholeRoofArea.toFixed(1)} m²` : '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Maximum panels</span>
-                        <strong>{solar.summary?.maximumPanels ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Imagery quality</span>
-                        <strong>{solar.summary?.imageryQuality ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Imagery date</span>
-                        <strong>{solar.summary?.imageryDate ?? '—'}</strong>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="secondary-button diagnostic-button"
-                      disabled={!solar.response}
-                      onClick={actions.toggleSolarDiagnostics}
-                    >
-                      {solar.showDiagnostics ? 'Hide diagnostic response' : 'Show diagnostic response'}
-                    </button>
-
-                    {solar.showDiagnostics && solar.response && (
-                      <pre className="diagnostic-response">{JSON.stringify(solar.response, null, 2)}</pre>
-                    )}
-                  </details>
                 </div>
               )}
 

@@ -1,11 +1,13 @@
 import { createContext, useContext, useMemo, useReducer } from 'react'
 import { createEmptyProject, touchProject } from '../models/Project'
-import { ProfileError, profileFromUrl } from '../lib/energyProfile'
+import { captureHandoffFromBrowser } from '../lib/designerHandoff'
 import { SYNTHETIC_LAT, SYNTHETIC_LNG, syntheticRoofFaces } from '../lib/syntheticFixture'
 
 function createInitialProject() {
   const project = createEmptyProject()
   if (typeof window === 'undefined') return project
+  // Strip #handoff= before the first paint, including on the synthetic preview.
+  captureHandoffFromBrowser()
   if (new URLSearchParams(window.location.search).get('preview') === 'synthetic') {
     const faces = syntheticRoofFaces()
     project.building = {
@@ -30,17 +32,6 @@ function createInitialProject() {
       },
     }
     return project
-  }
-  try {
-    const result = profileFromUrl(window.location.search, window.location.hash)
-    if (result) project.energyProfile = { ...result, error: null, origin: 'link' }
-  } catch (error) {
-    project.energyProfile = {
-      profile: null,
-      warnings: [],
-      error: error instanceof ProfileError ? error.message : 'Could not read the bill data in this link.',
-      origin: 'link',
-    }
   }
   return project
 }
@@ -69,6 +60,8 @@ const actionTypes = {
   UPDATE_DESIGN: 'UPDATE_DESIGN',
   UNCONFIRM_ROOF: 'UNCONFIRM_ROOF',
   SET_DESIGN_SNAPSHOT: 'SET_DESIGN_SNAPSHOT',
+  APPLY_HANDOFF_SUCCESS: 'APPLY_HANDOFF_SUCCESS',
+  APPLY_HANDOFF_ERROR: 'APPLY_HANDOFF_ERROR',
 }
 
 // Any change to the roof means it has to be confirmed again, and hand-picked
@@ -268,6 +261,20 @@ function reducer(state, action) {
     case actionTypes.SET_DESIGN_SNAPSHOT:
       return touchProject({ ...state, designSnapshot: action.payload })
 
+    case actionTypes.APPLY_HANDOFF_SUCCESS:
+      if (state.energyProfile?.profile && state.energyProfile.origin === 'manual') return state
+      return touchProject({
+        ...state,
+        energyProfile: { ...action.payload, error: null, origin: 'insights-handoff' },
+      })
+
+    case actionTypes.APPLY_HANDOFF_ERROR:
+      if (state.energyProfile?.profile) return state
+      return touchProject({
+        ...state,
+        energyProfile: { profile: null, warnings: [], error: action.payload, origin: 'insights-handoff' },
+      })
+
     default:
       return state
   }
@@ -310,6 +317,8 @@ export function ProjectProvider({ children }) {
       updateDesign: (payload) => dispatch({ type: actionTypes.UPDATE_DESIGN, payload }),
       unconfirmRoof: () => dispatch({ type: actionTypes.UNCONFIRM_ROOF }),
       setDesignSnapshot: (payload) => dispatch({ type: actionTypes.SET_DESIGN_SNAPSHOT, payload }),
+      applyHandoffSuccess: (payload) => dispatch({ type: actionTypes.APPLY_HANDOFF_SUCCESS, payload }),
+      applyHandoffError: (payload) => dispatch({ type: actionTypes.APPLY_HANDOFF_ERROR, payload }),
     }),
     [],
   )

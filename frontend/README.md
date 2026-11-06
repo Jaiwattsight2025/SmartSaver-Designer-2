@@ -3,14 +3,13 @@
 React + Vite app that takes a customer from their power bill to a sized solar +
 battery system in six steps:
 
-1. **Property** – bill data (Wattsight link, Wattsight results `.json`, or typed in) and the address.
+1. **Property** – bill numbers (Energy Insights handoff, or typed in) and the address. The Designer does not take a bill file.
 2. **Roof** – estimated roof-face outlines from the Google Solar API, plus faces you trace by hand. Tick the ones to
-   use, drag corner dots to fix outlines, mark no-go areas, then **Confirm roof**.
-3. **Panels** – rows laid inside each confirmed outline (0.4 m setback, portrait/landscape, real module size); Google
-   data only ranks spots and gives yield. Edit mode: click to remove/add, drag to move. Size defaults to Wattsight `sol_kw`.
-4. **Battery & inverter** – suggested sizes (Wattsight `bat_kwh`), editable.
+   use. Pitch, mounting, corners and no-go areas are under **Adjust design**. Then **Confirm roof**.
+3. **Panels** – rows laid inside each confirmed outline. Edit tools are under **Adjust design**. Size can follow the Energy Insights suggestion.
+4. **Battery & inverter** – suggested sizes, editable.
 5. **Output** – yearly and monthly generation, self-use vs export, bill before/after.
-6. **Summary** – size, savings, placeholder price, payback; quote / shop links; print-to-PDF and JSON download.
+6. **Summary** – size, savings, placeholder price, payback; quote / shop links; print. A confirmed design keeps an internal snapshot for a later PDF. There is no customer JSON download.
 
 ## Run
 
@@ -22,21 +21,36 @@ npm test                     # vitest unit tests (src/lib/__tests__)
 npm run build
 ```
 
-`frontend/.env.local` must contain `VITE_GOOGLE_MAPS_API_KEY` (Maps JavaScript, Geocoding
-and Solar APIs enabled). It is git-ignored – never commit it.
+`frontend/.env.local` (see `.env.example`, git-ignored):
 
-## Wattsight hand-off
+- `VITE_GOOGLE_MAPS_API_KEY` — Maps JavaScript, Geocoding and Solar APIs. Without it the map does not load. Roof messages then say the map or the lookup failed; they do not say the lookup succeeded.
+- `VITE_INSIGHTS_API_BASE` — Insights **origin only**, for example `https://wattsight-platform.onrender.com`. No path, query, hash or token. This is baked in at build time. If it is blank, handoff shows a not-configured message and manual bill entry still works. The public “Analyse my bill in Energy Insights” link is always `https://wattsight-platform.onrender.com`.
 
-Wattsight opens the designer with its profile in the query string, for example:
+`solar.status` inside the app starts as `Not tested` until a property is locked. That string is internal. It is not shown. Customers see the map message and the roof-step text for that address (no data, estimate, or traced).
+
+A labelled fixture, not a live roof, is `http://localhost:5173/?preview=synthetic`.
+
+## Energy Insights handoff
+
+Insights should redirect the browser to the Designer with only:
 
 ```
-http://localhost:5173/?v=1&src=wattsight&pc=3147&st=VIC&ret=Alinta+Energy&days=31&kwh_yr=11462&kwh_day=31.4&tariff=single&rate=0.3035&supply=0.862&fit=0.05&sol_kw=10&bat_kwh=13.5
+https://<designer-host>/#handoff=<opaque-token>
 ```
 
-Keys: `v, src, pc, st, ret, days, kwh_yr, kwh_day, kwh_pk, kwh_sh, kwh_op, kwh_cl, exp_kwh,
-tariff, rate, r_pk, r_sh, r_op, r_cl, supply, fit, sol_kw, bat_kwh` (rates in $/kWh, supply in $/day).
-A Wattsight results file (`"format": "wattsight-results"`, version 1) can be uploaded instead.
-Parsing and validation live in `src/lib/energyProfile.js`.
+The Designer strips that fragment immediately, then `POST`s JSON `{ "token": "<opaque-token>" }` to `{VITE_INSIGHTS_API_BASE}/api/designer-handoff/redeem` with `credentials: "omit"`. The body must be the existing profile.json (`source: "wattsight"`, with `usage`) or a `wattsight-results` wrapper. Bill numbers in the query string, `#` profile fields, and `?profile_url=` are ignored.
+
+The backend must enforce short expiry, single redemption, the subscription gate, and CORS for the exact Designer origin. This repo does not claim that live path is done.
+
+Still to test against a configured host (not covered by unit tests):
+
+- CORS preflight from the Designer origin
+- a fresh token redeems once and the second POST is rejected
+- an expired token
+- an account the subscription gate refuses
+- the browser sends no cookie (`credentials: omit`)
+- the token is absent from the address bar after load and is not in Designer logs
+- a non-finite or oversized JSON body shows the fixed “could not use” message and does not replace a profile the customer already typed
 
 ## Where things live
 

@@ -152,7 +152,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       <small className="hint">
         Up to {layout.available} panels fit on the faces you picked.{' '}
         {profile?.recommendedSolarKw
-          ? `Wattsight suggested ${profile.recommendedSolarKw} kW = ${suggestedPanels} panels.`
+          ? `Energy Insights suggested ${profile.recommendedSolarKw} kW = ${suggestedPanels} panels.`
           : `Suggested for your use: ${suggestedPanels} panels.`}
         {wanted > layout.available && ` That is more than fits, so we placed ${layout.available}.`}
       </small>

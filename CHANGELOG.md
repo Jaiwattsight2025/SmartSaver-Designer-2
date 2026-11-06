@@ -1,5 +1,11 @@
 # Changelog
 
+## [designer-v2] – 2026-11-06 – Energy Insights handoff, no customer JSON
+
+- Removed the customer “Load Wattsight file” control and the design JSON download. Manual bill numbers stay. “Analyse my bill in Energy Insights” links to https://wattsight-platform.onrender.com. The Designer does not take a bill file. Customer copy says Energy Insights; internal profile source ids are unchanged. The confirmed-design snapshot is still stored for a later PDF. It is not offered as a download.
+- The property step no longer shows “GOOGLE ROOF DATA / Not tested”. That string is the initial value of `building.solar.status` in `models/Building.js` (also reset in `ProjectContext` before a lookup). It was rendered in `App.jsx` inside the diagnostics disclosure. It is internal only now. A failed or not-yet-run lookup is not described as successful. The map message and the roof step still say when this property has no data, an estimate, or a trace. The synthetic preview banner still says it is not a real property.
+- Handoff client: Insights may open the Designer with `#handoff=<opaque token>` only. The token is removed from the address bar immediately and is not stored. The Designer POSTs `{ token }` to `VITE_INSIGHTS_API_BASE/api/designer-handoff/redeem` (`credentials: omit`). The base comes from the build env, not the page URL. The body must match the existing profile.json checks. Query-string bill data and `profile_url` are not loaded. Errors are fixed sentences (not configured, expired or already used, unreachable, unusable) and do not include the token. A failed handoff does not replace bill numbers the customer already entered. Live redeem is not claimed until the Insights host, CORS and subscription gate are configured.
+
 ## [designer-v2] – 2026-11-06 – Simpler journey, honest tilt assumptions, design snapshot
 
 - Homeowner path stays address, confirm roof, then design and savings. Detected roof pitch and how the panels sit stay visible on every face. Pitch, mounting, corner edits, ridge split, tracing and no-go areas sit under **Adjust design**. Confirm roof, other-roof and verandah warnings, overlaps and validation stay in view. Overrides are still saved on the face.
