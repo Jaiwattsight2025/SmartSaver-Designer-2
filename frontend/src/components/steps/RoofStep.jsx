@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { editedOutline, editedPitch, faceOverlaps, manualFace, roofTotals, splitFace } from '../../lib/roofFaces'
+import { no3dRoofNote } from '../../lib/buildingMatch'
 
 function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline, onSplit }) {
   return (
@@ -43,6 +44,7 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
             </span>
           )}
           {face.otherRoof && <small className="non-roof-why">Left out: {face.otherRoofReason}.</small>}
+          {face.dsmRejectNote && <small className="non-roof-why">{face.dsmRejectNote}</small>}
           {face.nonRoofLikely && (
             <span className="outline-badge low non-roof" title={(face.nonRoofReasons ?? []).join('; ')}>
               Possibly verandah/not roof
@@ -226,14 +228,14 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
       {solar.status === 'Connecting' && <div className="info-box">Loading your roof from Google…</div>}
       {solar.status === 'Unavailable' && (
         <div className="info-box error">
-          Google has no roof data for this house. Trace your roof faces on the map instead.
+          {solar.response?.message || 'Google has no roof data for this house.'} Trace your roof on the map with "+ Trace
+          a roof face".
         </div>
       )}
       {solar.status === 'Connected' && faces.length > 0 && !confirmed && (
         <div className="info-box">
-          We found {faces.length} roof face{faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check
-          each outline: click a face and drag its corner dots onto the roof edges (drag a middle dot to add a corner,
-          right-click a corner to delete it). Orange outlines are rough guesses.
+          {no3dRoofNote(faces) ||
+            `We found ${faces.length} roof face${faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check each outline: click a face and drag its corner dots onto the roof edges (drag a middle dot to add a corner, right-click a corner to delete it). Orange outlines are rough guesses.`}
         </div>
       )}
 

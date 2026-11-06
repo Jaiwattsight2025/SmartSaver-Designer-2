@@ -1,5 +1,28 @@
 # Changelog
 
+## [designer-v2] – 2026-11-06 – D2.5: roof and panel reliability
+
+- Separate buildings with no 3D join are left out. If Google never records an edge between faces
+  (the trace failed, or there is no 3D model), outlines more than 0.6 m apart are treated as another
+  building: unticked, badged "Other roof - tick to include". A face that shares an edge, or sits in a
+  thin tracing gap, stays. This covers the Labassa-style separate block when only the estimate outlines
+  exist, not only when the 3D adjacency graph does. A neighbour that physically touches the roof you
+  picked, with no 3D wall step, is still included — tick it off if it is next door. Bunnings (wall on a
+  big building) and a house-sized lower storey are unchanged.
+- Swallowed outlines are not used. A 3D trace more than twice Google's area for that face, or under 45%
+  of it, is low confidence and kept as the estimate. The face says why ("may include the next building"
+  or "only covered N% of this face") instead of a "traced from 3D" badge. A trace between 1.6× and 2×
+  stays medium: "traced - check the corners".
+- No 3D model: the roof step says Google has no usable 3D roof model (common in rural and new areas) and
+  to drag the corners or trace the roof. A Solar API 404 still uses that plain-English line on the map
+  and on the roof step; other errors show Google's message, plus how to trace.
+- Panel edit: a drag under 0.6 m is a click (remove). A move only sticks when the drop is closer to a
+  free slot than to the panel you started on, so a short nudge no longer jumps to the next panel. A drag
+  that does not land on a free slot snaps back. A real drag no longer also counts as a click. Removing
+  one panel still leaves the others where they were. Setback, L-shaped faces, and the 13.2 kW cap still
+  hold (tests).
+- Settings: MAIN_ROOF.CONNECT_GAP_M and PANEL_CLICK_SLOP_M in designerConfig.js.
+
 ## [designer-v2] – 2026-11-05 – D2.4: main roof only, compact panel blocks, raised verandahs
 
 - Main roof: when Google merges a complex (or next door) into one building, the 3D roof data is used to find

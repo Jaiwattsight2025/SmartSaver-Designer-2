@@ -70,6 +70,21 @@ describe('panel groups (no odd singles)', () => {
     const warn = validateLayout(l, [big, small]).issues.filter((i) => i.level === 'warning')
     expect(warn.map((w) => w.message).join(' ')).toMatch(/small has only 1 panel/)
   })
+  it('keeps every panel inside an L-shaped face, including the setback', () => {
+    const o = a0
+    const p = (east, north) => offset(offset(o, east, 90), north, 0)
+    // 10 m x 8 m with a 5 m x 4 m notch taken out of the north-east.
+    const face = manualFace({
+      id: 'ell',
+      vertices: [p(0, 0), p(10, 0), p(10, 4), p(5, 4), p(5, 8), p(0, 8)],
+      pitchDegrees: 22,
+      azimuthDegrees: 0,
+    })
+    const l = layoutPanels({ insights: null, faces: [face], panelCount: 99, moduleWatts: 440, state: 'VIC' })
+    expect(l.count).toBeGreaterThanOrEqual(4)
+    expect(validateLayout(l, [face]).ok).toBe(true)
+    expect(l.dcKw).toBeLessThanOrEqual(13.2)
+  })
   it('chooseBlock prefers a full rectangle over a stepped fragment', () => {
     const cells = []
     for (let r = 0; r < 3; r += 1) for (let c = 0; c < 4; c += 1) cells.push({ id: `${r}:${c}`, row: r, col: c, yearlyAcKwh: 500 })

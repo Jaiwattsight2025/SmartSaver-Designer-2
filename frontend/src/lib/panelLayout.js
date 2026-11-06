@@ -16,6 +16,7 @@ import {
   DC_TO_AC_DERATE,
   DEFAULT_PANEL_ORIENTATION,
   MAX_ADDED_PANEL_SNAP_M,
+  PANEL_CLICK_SLOP_M,
   MAX_RESIDENTIAL_KW,
   MIN_PANELS_PER_FACE,
   MIN_PANELS_PER_FACE_SMALL,
@@ -467,6 +468,28 @@ export function layoutPanels({
     minPanelsPerFace: minPer,
     smallFaces: smallFaces.map((f) => f.label ?? f.faceId),
   }
+}
+
+/**
+ * What a panel drag on the map should do.
+ * Google turns a shaky click into a short drag and then skips the click, so a
+ * small move removes the panel. A move only sticks when the drop is closer to
+ * a free slot than to where the panel started (past the halfway line) and the
+ * drag was longer than a click. Anything else snaps back.
+ * Returns { type: 'remove' | 'move' | 'cancel', cell? }.
+ */
+export function resolvePanelDrag(origin, drop, candidates, { exclude = [], maxM = MAX_ADDED_PANEL_SNAP_M, clickSlopM = PANEL_CLICK_SLOP_M } = {}) {
+  const o = toLatLng(origin)
+  const d = toLatLng(drop)
+  if (!o || !d) return { type: 'cancel' }
+  const moved = toLocal(o, d)
+  const dist = Math.hypot(moved.x, moved.y)
+  if (dist < clickSlopM) return { type: 'remove' }
+  const cell = snapToCell(candidates, d, { exclude, maxM })
+  if (!cell?.center) return { type: 'cancel' }
+  const at = toLocal(d, cell.center)
+  if (Math.hypot(at.x, at.y) < dist) return { type: 'move', cell }
+  return { type: 'cancel' }
 }
 
 /** Nearest free panel spot to a lat/lng (for drag-and-snap), or null if none is close. */

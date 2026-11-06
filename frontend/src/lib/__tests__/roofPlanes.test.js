@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeFrame, roofFacesFromDsm, planeFromSegment, planeZ, planeIntersectionLine } from '../roofPlanes'
+import { makeFrame, roofFacesFromDsm, planeFromSegment, planeZ, planeIntersectionLine, confidenceFromQuality } from '../roofPlanes'
 
 // Synthetic 12 m x 8 m hip roof, 22 degree pitch, eaves at 3 m, on a 0.25 m grid.
 // A neighbour's shed sits 3 m east (in the building mask too) and the rest is garden.
@@ -119,6 +119,38 @@ describe('roofPlanes', () => {
     // the north face's ridge edge sits on y = 0
     const ridgeYs = byIndex[0].polygon.filter((p) => Math.abs(p.y) < 0.5)
     expect(ridgeYs.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('rejects a trace that swallowed the next building', () => {
+    const r = makeRaster()
+    const Tloc = Math.tan((22 * Math.PI) / 180)
+    const hip = (x, y) => 3 + Tloc * Math.min(6 - Math.abs(x), 4 - Math.abs(y))
+    for (let v = 0; v < H; v += 1) {
+      for (let u = 0; u < W; u += 1) {
+        const { x, y } = frame.toLocal(u + 0.5, v + 0.5)
+        if (x > 6 && x <= 12 && Math.abs(y) <= 4) {
+          r.dsm[v * W + u] = hip(x, y)
+          r.mask[v * W + u] = 1
+        }
+      }
+    }
+    const segs = SEGMENTS.map((s) => (s.index === 2 ? { ...s, areaM2: 16, box: { x0: 2, x1: 12, y0: -4, y1: 4 } } : s))
+    const east = roofFacesFromDsm(r, segs).faces.find((f) => f.index === 2)
+    expect(east.metrics.planAreaM2).toBeGreaterThan(40)
+    expect(east.confidence).toBe('low')
+    expect(east.metrics.rejectReason).toMatch(/next building/)
+  })
+
+  it('scores outline confidence from the fit, and refuses a wild area ratio', () => {
+    const good = { iou: 0.9, onBuilding: 0.95, rmsM: 0.08, pixelAreaM2: 30, polyArea: 32, googleArea: 40 }
+    expect(confidenceFromQuality(good).confidence).toBe('high')
+    expect(confidenceFromQuality(good).rejectReason).toBe(null)
+    expect(confidenceFromQuality({ ...good, polyArea: 70, googleArea: 16 }).confidence).toBe('low')
+    expect(confidenceFromQuality({ ...good, polyArea: 70, googleArea: 16 }).rejectReason).toMatch(/next building/)
+    expect(confidenceFromQuality({ ...good, polyArea: 10, googleArea: 40 }).confidence).toBe('low')
+    expect(confidenceFromQuality({ ...good, polyArea: 50, googleArea: 30 }).confidence).toBe('medium')
+    expect(confidenceFromQuality({ iou: 0.2, onBuilding: 0.5, polyArea: 20, googleArea: 20 }).confidence).toBe('low')
+    expect(confidenceFromQuality({ polyArea: 0.2, googleArea: 10 }).confidence).toBe('none')
   })
 
   it('falls back to nothing when the mask is empty', () => {

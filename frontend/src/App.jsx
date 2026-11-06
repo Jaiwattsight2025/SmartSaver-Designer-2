@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { snapToCell } from './lib/panelLayout'
+import { resolvePanelDrag } from './lib/panelLayout'
 import { editedOutline } from './lib/roofFaces'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
@@ -13,7 +13,6 @@ import { getBuildingInsights, summariseBuildingInsights } from './services/solar
 import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
-import { toLocal } from './lib/geo'
 import { buildingMatchWarning, noCoverageMessage } from './lib/buildingMatch'
 import { flagNonRoofFaces } from './lib/nonRoof'
 import { markOtherRoofs } from './lib/mainRoof'
@@ -112,17 +111,16 @@ function App() {
         })
       },
       drag(id, latLng) {
-        // A click with a little hand jitter turns into a tiny drag on a draggable
-        // polygon (and Google then skips the click): treat it as the click.
+        // A shaky click becomes a short drag and Google then skips the click.
         const orig = layout.panels.find((p) => p.id === id)
-        const moved = orig?.center ? toLocal(orig.center, latLng) : null
-        if (moved && Math.hypot(moved.x, moved.y) < 0.2) {
+        const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
+        const gesture = resolvePanelDrag(orig?.center, latLng, pool, { exclude: placed.filter((x) => x !== id) })
+        if (gesture.type === 'remove') {
           api.remove(id)
           return
         }
-        const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
-        const cell = snapToCell(pool, latLng, { exclude: placed })
-        if (!cell || cell.id === id) {
+        const cell = gesture.cell
+        if (gesture.type !== 'move' || !cell || cell.id === id) {
           setMapTick((t) => t + 1) // snap back
           return
         }
@@ -295,9 +293,11 @@ function App() {
       setStatus({ label: 'Roof loaded', tone: 'success' })
       setMapMessage(`We found ${faces.length} roof faces.${traceNote} Press Next to check them.${matchNote}`)
     } catch (error) {
-      actions.setSolarError(error.details ?? { message: error.message })
+      const message = noCoverageMessage(error)
+      const details = error.details && typeof error.details === 'object' ? error.details : {}
+      actions.setSolarError({ ...details, message })
       setStatus({ label: 'No roof data', tone: 'error' })
-      setMapMessage(`${noCoverageMessage(error)} You can trace your roof yourself in step 2: press Next, then "+ Trace a roof face".`)
+      setMapMessage(`${message} You can trace your roof yourself in step 2: press Next, then "+ Trace a roof face".`)
     }
   }
 

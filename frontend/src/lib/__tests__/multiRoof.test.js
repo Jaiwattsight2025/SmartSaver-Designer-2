@@ -1,7 +1,7 @@
 // D2.3: fixes from the multi-address check (synthetic geometry only).
 import { describe, expect, it } from 'vitest'
 import { flagNonRoofFaces } from '../nonRoof'
-import { buildingMatch, buildingMatchWarning, noCoverageMessage } from '../buildingMatch'
+import { buildingMatch, buildingMatchWarning, no3dRoofNote, noCoverageMessage } from '../buildingMatch'
 import { fillFace, layoutPanels, mountFor, panelFootprint, tiltFrameGain, tiltRowShadowGapM, validateLayout } from '../panelLayout'
 import { manualFace } from '../roofFaces'
 import { offset } from '../geo'
@@ -131,5 +131,10 @@ describe('wrong building and no coverage', () => {
     const err = Object.assign(new Error('Requested entity was not found.'), { details: { httpStatus: 404 } })
     expect(noCoverageMessage(err)).toMatch(/no 3D roof data/)
     expect(noCoverageMessage(new Error('Quota exceeded'))).toBe('Quota exceeded')
+  })
+  it('says so on the roof step when nothing was traced from 3D', () => {
+    expect(no3dRoofNote([{ source: 'solar-api', outlineShape: 'rectangle' }])).toMatch(/no usable 3D roof model/)
+    expect(no3dRoofNote([{ source: 'solar-api', outlineShape: 'dsm' }])).toBe('')
+    expect(no3dRoofNote([{ source: 'manual', outlineShape: 'traced' }])).toBe('')
   })
 })

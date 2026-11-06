@@ -66,6 +66,10 @@ export const ROOF_EDGE_SETBACK_M = 0.4 // [ASSUMPTION] keep panels this far insi
 export const OBSTACLE_CLEARANCE_M = 0.3 // [ASSUMPTION] keep panels this far from vents, skylights, etc.
 export const DEFAULT_PANEL_ORIENTATION = 'portrait' // long side up the roof
 export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the nearest grid spot within this distance
+// A map drag shorter than this is a shaky click (remove), not a move. Just past
+// half a module width: the next slot's centre is ~1.15 m away, so a real move
+// has to pass the halfway line and this distance.
+export const PANEL_CLICK_SLOP_M = 0.6
 export const MIN_PANELS_PER_FACE = 4 // [ASSUMPTION] auto-fill never leaves fewer than this on a face (no odd singles)
 export const MIN_PANELS_PER_FACE_SMALL = 2 // ...or this for a tiny system
 export const SMALL_SYSTEM_PANELS = 8 // a target of this many panels or fewer counts as tiny
@@ -92,8 +96,10 @@ export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] mid-winter noon sun height
  * MIN_EDGE_M: shortest shared edge that joins two faces; WALL_EDGE_M: shortest wall that can join
  * another storey; HOUSE_MAX_M2: above this plan area a wall step is treated as a boundary to next
  * door; SEED_MAX_M: the locked point must be within this of a face for the filter to run.
+ * CONNECT_GAP_M: outlines closer than this (a shared edge, or a thin tracing gap)
+ * are the same roof even when the 3D model did not record a join.
  */
-export const MAIN_ROOF = { STEP_M: 1.0, MIN_EDGE_M: 1.0, WALL_EDGE_M: 2.0, HOUSE_MAX_M2: 1000, SEED_MAX_M: 8 }
+export const MAIN_ROOF = { STEP_M: 1.0, MIN_EDGE_M: 1.0, WALL_EDGE_M: 2.0, HOUSE_MAX_M2: 1000, SEED_MAX_M: 8, CONNECT_GAP_M: 0.6 }
 
 /** Panel blocks (chooseBlock): blocks up to this long-to-short ratio count as compact. */
 export const BLOCK_MAX_ASPECT = 2

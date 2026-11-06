@@ -295,13 +295,24 @@ export async function createMapController(container) {
           zIndex: 5,
         })
         poly.setValues({ ssdKind: 'panel', ssdId: panel.id })
-        if (opts.onPanelClick) poly.addListener('click', () => opts.onPanelClick(panel.id))
+        // A real drag also fires a click on some browsers. Ignore that click so
+        // a move is not immediately undone as a remove.
+        let dragged = false
         if (opts.onPanelDrag) {
+          poly.addListener('drag', () => {
+            dragged = true
+          })
           poly.addListener('dragend', () => {
             const pts = poly.getPath().getArray()
             const lat = pts.reduce((t, p) => t + p.lat(), 0) / pts.length
             const lng = pts.reduce((t, p) => t + p.lng(), 0) / pts.length
             opts.onPanelDrag(panel.id, { lat, lng })
+          })
+        }
+        if (opts.onPanelClick) {
+          poly.addListener('click', () => {
+            if (dragged) return
+            opts.onPanelClick(panel.id)
           })
         }
         overlays.panels.push(poly)
