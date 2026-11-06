@@ -1113,6 +1113,96 @@ button:disabled {
   margin-bottom: 4px;
 }
 
+.mount-summary {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+details.adjust-design {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 0 10px 10px;
+}
+
+details.adjust-design summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.synthetic-banner {
+  margin: 0 0 12px;
+}
+
+@media (max-width: 850px) {
+  .app-shell,
+  body {
+    overflow-x: clip;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .control-stack input,
+  .control-stack select,
+  .step-button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .control-stack input,
+  .control-stack select {
+    width: 100%;
+  }
+
+  .panel-navigation {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin: 12px -4px 0;
+    padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--line);
+  }
+
+  .map-guidance,
+  .info-box,
+  .mount-summary,
+  .stage-coordinates,
+  .brand-name,
+  h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .map-guidance {
+    font-size: 14px;
+    border-radius: 12px;
+    max-width: calc(100% - 16px);
+  }
+
+  .two-column-buttons,
+  .three-column-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .count-row {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .topbar,
+  .workspace,
+  .control-panel,
+  .designer-grid {
+    max-width: 100%;
+  }
+}
+
 .face-edit label {
   display: flex;
   flex-direction: column;

@@ -31,14 +31,16 @@ describe('pitch and install type', () => {
     expect(pitched.pitchEdited).toBe(false)
     expect(pitched.installEdited).toBe(false)
     expect(mountFor(pitched)).toEqual({ flat: false, tiltDeg: 22.4, azimuthDeg: 1 })
-    expect(mountHint(pitched)).toMatch(/Detected as 22.4° from Google's roof data/)
+    expect(mountHint(pitched)).toMatch(/Roof pitch 22.4° \(detected from Google's roof data\)/)
+    expect(mountHint(pitched)).toMatch(/panel tilt is the roof pitch/)
     expect(isFlatPitch(4.9)).toBe(true)
     expect(isFlatPitch(5)).toBe(false)
 
     const flat = manualFace({ id: 'flat', vertices: rect(12, 8), pitchDegrees: 2, azimuthDegrees: 180 })
     expect(flat.installType).toBe('tilt')
     expect(mountFor(flat)).toEqual({ flat: true, tiltDeg: 10, azimuthDeg: 0 })
-    expect(mountHint(flat)).toMatch(/Under 5° counts as flat/)
+    expect(mountHint(flat)).toMatch(/under 5°/)
+    expect(mountHint(flat)).toMatch(/not a structural design/)
     expect(mountHint(flat)).not.toMatch(/Google/)
   })
 
@@ -53,8 +55,9 @@ describe('pitch and install type', () => {
     expect(face.installType).toBe('tilt')
     expect(face.detectedPitchDegrees).toBe(22.4)
     expect(mountFor(face).flat).toBe(true)
-    expect(mountHint(face)).toMatch(/You set this/)
-    expect(mountHint(face)).toMatch(/tilt frames/)
+    expect(mountHint(face)).toMatch(/you changed it from the detected 22.4/)
+    expect(mountHint(face)).toMatch(/not a structural design/)
+    expect(mountHint(face)).toMatch(/You chose this mounting/)
 
     // Closing and reopening the face list is just reading the same saved face.
     const reopened = save(face, { included: false })
@@ -107,7 +110,7 @@ describe('pitch and install type', () => {
     expect(detected).toContain('Pitch of Face 1 in degrees')
     expect(detected).toContain('Flush')
     expect(detected).toContain('Tilt frames')
-    expect(detected).toContain('Detected as 22.4°')
+    expect(detected).toContain('Pitch of Face 1 in degrees')
     expect(detected).not.toContain('Flat roof')
 
     let flat = manualFace({ id: 'flat', label: 'North flat', vertices: rect(8, 6), pitchDegrees: 1, azimuthDegrees: 0 })
@@ -115,7 +118,7 @@ describe('pitch and install type', () => {
     const html = renderToStaticMarkup(createElement(FaceMount, { face: flat, onUpdate: () => {} }))
     expect(html).toContain('Flat roof')
     expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('You set this')
+    expect(html).toContain('not a structural design')
     expect(html).toMatch(/Tilt frames[\s\S]*aria-pressed="true"|aria-pressed="true"[\s\S]*Tilt frames/)
   })
 })

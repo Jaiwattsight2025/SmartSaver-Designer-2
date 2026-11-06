@@ -87,8 +87,7 @@ describe('flat roofs use north-facing tilt frames', () => {
     expect(l.notes.join(' ')).toMatch(/tilt frames facing north/)
     expect(validateLayout(l, [flat]).ok).toBe(true)
   })
-  it("Google's flush yields on a flat face are raised for the tilt frame, so flat roofs are not ranked unfairly", () => {
-    expect(tiltFrameGain({ pitchDegrees: 1, azimuthDegrees: 200 })).toBeGreaterThan(1.03)
+  it('does not boost Google flush yields for tilt frames (synthetic flat roof)', () => {
     expect(tiltFrameGain({ pitchDegrees: 22, azimuthDegrees: 0 })).toBe(1)
     const seg = { ...flat, id: 'seg-0', source: 'solar-api', segmentIndex: 0 }
     const insights = {
@@ -99,9 +98,16 @@ describe('flat roofs use north-facing tilt frames', () => {
         solarPanels: [{ segmentIndex: 0, center: { latitude: seg.center.lat, longitude: seg.center.lng }, yearlyEnergyDcKwh: 500 }],
       },
     }
-    const l = layoutPanels({ insights, faces: [seg], panelCount: 4, moduleWatts: 400, state: 'VIC' })
+    const l = layoutPanels({ insights, faces: [seg], panelCount: 4, moduleWatts: 400, state: 'VIC', latitude: -37.8 })
     expect(l.count).toBe(4)
-    for (const p of l.panels) expect(p.yearlyAcKwh).toBeCloseTo(500 * 0.85 * tiltFrameGain(seg), 1)
+    const googleBoosted = 500 * 0.85 * tiltFrameGain(seg)
+    for (const p of l.panels) {
+      expect(p.source).toBe('grid')
+      expect(p.yearlyAcKwh).not.toBeCloseTo(googleBoosted, 0)
+    }
+    expect(l.notes.join(' ')).toMatch(/not Google's flush-panel figure/)
+    expect(l.notes.join(' ')).toMatch(/not a structural design/)
+    expect(l.assumptions.find((a) => a.id === 'winter-sun').source).toBe('latitude')
   })
   it('pitched faces are unchanged (no tilt-frame note)', () => {
     const pitched = manualFace({ id: 'p', label: 'p', vertices: rectV(o, 10, 6), pitchDegrees: 20, azimuthDegrees: 0 })

@@ -1,5 +1,6 @@
 /* The downloadable design ("smartsaver-design" v1) and a plain-text summary. */
 import { MONTHS } from '../config/designerConfig'
+import { buildDesignSnapshot } from './designSnapshot'
 import { installTypeOf } from './roofFaces'
 
 export const DESIGN_FORMAT = 'smartsaver-design'
@@ -9,7 +10,10 @@ const r1 = (x) => (x === null || x === undefined ? null : Math.round(x * 10) / 1
 const r0 = (x) => (x === null || x === undefined ? null : Math.round(x))
 
 /** No street address, name or NMI goes in here - postcode/state only. */
-export function buildDesignJson({ profile, design, pv, roofFaces, now = new Date() }) {
+export function buildDesignJson({ profile, design, pv, roofFaces, latitude, confirmed = false, snapshot, now = new Date() }) {
+  const frozen =
+    snapshot ??
+    buildDesignSnapshot({ roofFaces, design, latitude, state: profile?.state ?? null, confirmed })
   return {
     format: DESIGN_FORMAT,
     version: DESIGN_VERSION,
@@ -67,6 +71,7 @@ export function buildDesignJson({ profile, design, pv, roofFaces, now = new Date
       paybackYears: design.payback?.total ? r1(design.payback.total) : null,
     },
     warnings: design.warnings,
+    snapshot: frozen,
   }
 }
 

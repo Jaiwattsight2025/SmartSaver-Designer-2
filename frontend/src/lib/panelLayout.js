@@ -35,10 +35,26 @@ import {
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
 import { faceAxes, fromFaceUV, toFaceUV } from './roofOutline'
-import { googlePanelSize, installTypeOf } from './roofFaces'
+import { googlePanelSize, installTypeOf, isFlatPitch } from './roofFaces'
 import { stateYield } from './energyModel'
 
 const RAD = Math.PI / 180
+
+/**
+ * Mid-winter solar-noon altitude (degrees) from latitude.
+ * Southern winter is the June solstice (declination +23.44°); northern winter is December.
+ * Rounded to the nearest degree. Null when latitude is missing or the result is not useful.
+ * This is a noon figure only: it ignores hills, trees and the rest of the day.
+ */
+export function winterNoonSunDeg(latitudeDeg) {
+  if (latitudeDeg == null || latitudeDeg === '') return null
+  const lat = Number(latitudeDeg)
+  if (!Number.isFinite(lat) || Math.abs(lat) > 65) return null
+  const declination = lat < 0 ? 23.44 : -23.44
+  const altitude = 90 - Math.abs(lat - declination)
+  if (altitude < 12 || altitude > 75) return null
+  return Math.round(altitude)
+}
 
 /** [ASSUMPTION] Output vs the state average for a roof's pitch and direction (southern hemisphere: north is best). */
 export function orientationFactor(pitchDegrees, azimuthDegrees) {
@@ -65,7 +81,11 @@ export function mountFor(face) {
   return { flat: false, tiltDeg: pitch, azimuthDeg: Number(face?.azimuthDegrees) || 0 }
 }
 
-/** Output gain of a tilt frame over Google's flush-mounted estimate on a flat face (1 for pitched faces). */
+/**
+ * Not applied to Google's yields. Kept so older comparisons can see the ratio
+ * of the orientation model; the layout uses the state-average estimate instead
+ * of multiplying Google's flush figure by this.
+ */
 export function tiltFrameGain(face) {
   const m = mountFor(face)
   if (!m.flat) return 1
@@ -79,7 +99,7 @@ export function tiltRowShadowGapM(lengthM, tiltDeg = TILT_FRAME_DEG, sunDeg = WI
 }
 
 /** Panel footprint seen from above: `across` along the gutter, `down` up/down the slope. */
-export function panelFootprint(face, { widthM, heightM, orientation }) {
+export function panelFootprint(face, { widthM, heightM, orientation, sunDeg }) {
   const m = mountFor(face)
   const cosP = Math.cos((m.flat ? m.tiltDeg : Number(face.pitchDegrees) || 0) * RAD)
   const landscape = String(orientation).toLowerCase() === 'landscape'
@@ -87,7 +107,7 @@ export function panelFootprint(face, { widthM, heightM, orientation }) {
   return {
     across: landscape ? heightM : widthM,
     down: slope * cosP,
-    shadowGapM: m.flat ? tiltRowShadowGapM(slope, m.tiltDeg) : 0,
+    shadowGapM: m.flat ? tiltRowShadowGapM(slope, m.tiltDeg, sunDeg ?? WINTER_NOON_SUN_DEG) : 0,
   }
 }
 
@@ -140,7 +160,7 @@ export function fillFace(face, options = {}) {
   const frame = faceFrame(face)
   const inner = insetPolygon(frame.poly, o.setbackM)
   if (inner.length < 3) return { cells: [], frame, grid: null }
-  const { across: w, down: h, shadowGapM } = panelFootprint(face, o)
+  const { across: w, down: h, shadowGapM } = panelFootprint(face, { ...o, sunDeg: options.sunDeg })
   const stepU = w + o.gapM
   const stepV = h + Math.max(o.rowGapM, shadowGapM)
   const minU = Math.min(...inner.map((p) => p.x))
@@ -247,7 +267,11 @@ export function layoutPanels({
   obstacles = [],
   maxKw = MAX_RESIDENTIAL_KW,
   minPanelsPerFace,
+  latitude,
 }) {
+  const sunFromLatitude = winterNoonSunDeg(latitude)
+  const sunDeg = sunFromLatitude ?? WINTER_NOON_SUN_DEG
+  const sunFromSite = sunFromLatitude != null
   const included = (faces ?? []).filter((f) => f.included && f.vertices?.length >= 3)
   const google = googlePanelSize(insights)
   const solarPanels = insights?.solarPotential?.solarPanels ?? []
@@ -271,21 +295,21 @@ export function layoutPanels({
   let blockedByObstacles = 0
   const removedCells = []
   for (const face of included) {
-    const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM })
-    // Yield from Google's nearest panel spot on this segment, else the segment mean, else the state average.
-    // Google's figures are for flush panels; flat faces get the tilt-frame gain.
-    const gain = tiltFrameGain(face)
+    const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM, sunDeg })
+    const mount = mountFor(face)
+    // Google's yearlyEnergyDcKwh is for flush panels on that roof face.
+    // Tilt frames do not get those figures multiplied by a generic uplift.
+    // Their output is the state-average orientation model, labelled as an estimate.
     const gp =
-      face.source === 'solar-api' && Number.isInteger(face.segmentIndex)
+      !mount.flat && face.source === 'solar-api' && Number.isInteger(face.segmentIndex)
         ? solarPanels
             .filter((p) => p.segmentIndex === face.segmentIndex && toLatLng(p.center))
             .map((p) => ({
               uv: toFaceUV(toLocal(frame.origin, toLatLng(p.center)), frame.axes),
-              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE * gain,
+              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE,
             }))
         : []
     const mean = gp.length ? gp.reduce((s, p) => s + p.ac, 0) / gp.length : null
-    const mount = mountFor(face)
     const fallback = (moduleWatts / 1000) * yieldKw * orientationFactor(mount.tiltDeg, mount.azimuthDeg)
     let kept = 0
     for (const cell of cells) {
@@ -444,11 +468,29 @@ export function layoutPanels({
     return out
   }
   const panels = chosen.map(strip)
-  const flatIds = new Set(included.filter((f) => mountFor(f).flat).map((f) => f.id))
-  if (panels.some((p) => flatIds.has(p.faceId)))
+  const tiltFaces = included.filter((f) => mountFor(f).flat && panels.some((p) => p.faceId === f.id))
+  const assumptions = []
+  if (tiltFaces.length) {
+    const onPitched = tiltFaces.some((f) => !isFlatPitch(f.pitchDegrees))
+    const sunText = sunFromSite
+      ? `about ${sunDeg}° at this latitude`
+      : `about ${WINTER_NOON_SUN_DEG}° (a Melbourne/Sydney figure, because this design has no latitude)`
     notes.push(
-      `Tilt frames: panels are on ${TILT_FRAME_DEG}° tilt frames facing north, with rows spaced so they do not shade each other in winter.`,
+      `Panels are drawn on ${TILT_FRAME_DEG}° tilt frames facing north. This is a layout sketch, not a structural design${onPitched ? ', and it is not an approved way to mount panels on a pitched roof' : ''}. Yearly output on those faces is an estimate from the state average and that frame tilt — not Google's flush-panel figure, and not a measured gain. Row gaps use the mid-winter noon sun (${sunText}) and ignore hills, trees and the rest of the day.`,
     )
+    assumptions.push(
+      { id: 'tilt-frame', value: TILT_FRAME_DEG, text: `${TILT_FRAME_DEG}° frames facing north. Layout sketch only, not a structural approval.` },
+      { id: 'tilt-yield', text: 'State-average sun at the frame tilt. Google flush yields are not boosted.' },
+      {
+        id: 'winter-sun',
+        value: sunDeg,
+        source: sunFromSite ? 'latitude' : 'fallback',
+        text: sunFromSite
+          ? `Mid-winter noon sun about ${sunDeg}° from latitude. Not a shade study.`
+          : `Mid-winter noon sun ${WINTER_NOON_SUN_DEG}° because latitude is missing. Not a shade study.`,
+      },
+    )
+  }
   const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
   const sources = new Set(panels.map((p) => p.source))
   return {
@@ -464,6 +506,9 @@ export function layoutPanels({
     googleWatts: google.watts,
     faceStats,
     notes,
+    assumptions,
+    sunDeg,
+    sunSource: sunFromSite ? 'latitude' : 'fallback',
     blockedByObstacles,
     removedCells,
     minPanelsPerFace: minPer,

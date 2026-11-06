@@ -5,7 +5,7 @@
  * area (see roofOutline.js) instead of hugging Google's panel spots, and the
  * customer confirms or drags the corners before panels are placed.
  */
-import { FLAT_ROOF_MAX_PITCH_DEG, MIN_FACE_AREA_M2 } from '../config/designerConfig'
+import { FLAT_ROOF_MAX_PITCH_DEG, MIN_FACE_AREA_M2, TILT_FRAME_DEG } from '../config/designerConfig'
 import { orientationFromAzimuth } from '../models/RoofFace'
 import { centroid, fromLocal, planAreaM2, toLatLng, toLocal } from './geo'
 import { overlapArea } from './polygon'
@@ -30,19 +30,35 @@ export function installTypeOf(face) {
   return defaultInstallType(face?.pitchDegrees)
 }
 
-/** Plain-English line under the pitch and install controls. */
-export function mountHint(face) {
+/**
+ * Always-visible line: roof pitch (detected or overridden) kept separate from
+ * how the panels sit. Tilt frames are a drawing assumption, not a structural approval.
+ */
+export function mountSummary(face) {
   const pitch = Number(face?.pitchDegrees) || 0
   const detected = Number(face?.detectedPitchDegrees)
-  const flatBit = isFlatPitch(pitch) ? ` Under ${FLAT_ROOF_MAX_PITCH_DEG}° counts as flat.` : ''
-  const how = installTypeOf(face) === INSTALL_TILT ? 'go on tilt frames' : 'sit flush on the roof'
-  if (face?.pitchEdited || face?.installEdited) {
-    return `You set this. Pitch is ${pitch}°. Panels ${how}.${flatBit} Change either if that is wrong.`
+  const tilt = installTypeOf(face) === INSTALL_TILT
+  let pitchBit
+  if (face?.pitchEdited && Number.isFinite(detected) && detected !== pitch) {
+    pitchBit = `Roof pitch ${pitch}° (you changed it from the detected ${detected}°).`
+  } else if (face?.source === 'solar-api' && Number.isFinite(detected)) {
+    pitchBit = `Roof pitch ${pitch}° (detected from Google's roof data).`
+  } else if (face?.pitchEdited) {
+    pitchBit = `Roof pitch ${pitch}° (you set this).`
+  } else {
+    pitchBit = `Roof pitch ${pitch}°.`
   }
-  if (face?.source === 'solar-api' && Number.isFinite(detected)) {
-    return `Detected as ${detected}° from Google's roof data.${flatBit} Change the pitch or the install type if that is wrong.`
-  }
-  return `Set the pitch and how the panels sit.${flatBit} Change either if that is wrong.`
+  const flatBit = isFlatPitch(pitch) ? ` This roof is under ${FLAT_ROOF_MAX_PITCH_DEG}°, so it is treated as flat.` : ''
+  const mountBit = tilt
+    ? ` Panels are drawn on ${TILT_FRAME_DEG}° tilt frames facing north. That is a layout sketch, not a structural design.`
+    : ' Panels sit flush on the roof, so the panel tilt is the roof pitch.'
+  const chosen = face?.installEdited ? ' You chose this mounting.' : ''
+  return `${pitchBit}${flatBit}${mountBit}${chosen}`
+}
+
+/** Same text as the visible summary. The adjust controls add that it can be changed. */
+export function mountHint(face) {
+  return `${mountSummary(face)} Change the pitch or the mounting if that is wrong.`
 }
 
 export function sunExposure(medianSunshine) {

@@ -1,5 +1,15 @@
 # Changelog
 
+## [designer-v2] – 2026-11-06 – Simpler journey, honest tilt assumptions, design snapshot
+
+- Homeowner path stays address, confirm roof, then design and savings. Detected roof pitch and how the panels sit stay visible on every face. Pitch, mounting, corner edits, ridge split, tracing and no-go areas sit under **Adjust design**. Confirm roof, other-roof and verandah warnings, overlaps and validation stay in view. Overrides are still saved on the face.
+- Phone layout: 44px controls, 16px type in the controls, stacked buttons, no sideways scroll, Previous and Next stay on screen.
+- Tilt frames are still 10° facing north, but that is labelled a layout sketch, not a structural design. On a pitched roof the note says it is not an approved mounting method.
+- Winter row spacing uses the mid-winter noon sun at the property latitude (Melbourne about 29°, Sydney about 33°, Darwin about 54°), rounded to the nearest degree. With no latitude it says it is using about 29° (Melbourne/Sydney) and that hills, trees and the rest of the day are ignored.
+- Tilt-frame yearly output is the state-average estimate for that frame tilt. Google's flush-panel figures are no longer multiplied by a generic gain.
+- A confirmed design stores a snapshot (faces, pitch and mounting overrides, panel ids, kW, validation, assumptions, limitations) for a later paid summary. The JSON download includes that snapshot instead of placing the panels again. `?preview=synthetic` opens a labelled fixture (not a live roof) when a Maps key is unavailable.
+- Tests for these cases use synthetic geometry only. They are not live property checks.
+
 ## [designer-v2] – 2026-11-06 – Per-face pitch and install type
 
 - Each included roof face on the confirm-roof step has a pitch control (degrees, with − / +) and an install

@@ -19,6 +19,11 @@ import { markOtherRoofs } from './lib/mainRoof'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
+import { buildDesignSnapshot } from './lib/designSnapshot'
+import { SYNTHETIC_BANNER } from './lib/syntheticFixture'
+
+const syntheticPreview =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === 'synthetic'
 
 const steps = [
   { id: 'property', number: 1, label: 'Property', summary: 'Your bill and address' },
@@ -65,7 +70,7 @@ const cards = {
 const MAP_STEPS = ['property', 'roof', 'panels', 'battery']
 
 function App() {
-  const [activeStep, setActiveStep] = useState('property')
+  const [activeStep, setActiveStep] = useState(syntheticPreview ? 'roof' : 'property')
   const [addressInput, setAddressInput] = useState('')
   const [status, setStatus] = useState({ label: 'Loading map', tone: 'neutral' })
   const [mapMessage, setMapMessage] = useState('Enter a property address.')
@@ -74,7 +79,7 @@ function App() {
   const lockSeq = useRef(0)
 
   const { building, energyProfile, actions, project } = useProject()
-  const { design } = useDesign()
+  const { design, state: designState } = useDesign()
   const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, solar, roofFaces, selectedRoofFaceId } =
     building
 
@@ -87,6 +92,28 @@ function App() {
   const [mapTick, setMapTick] = useState(0)
   const designChoices = project.design
   const roofConfirmed = Boolean(building.roofModelAccepted)
+  const snapKey = useRef('')
+
+  useEffect(() => {
+    if (!roofConfirmed) {
+      if (snapKey.current) {
+        snapKey.current = ''
+        actions.setDesignSnapshot(null)
+      }
+      return
+    }
+    const snap = buildDesignSnapshot({
+      roofFaces,
+      design,
+      latitude: coordinates?.lat ?? null,
+      state: designState,
+      confirmed: true,
+    })
+    const key = JSON.stringify(snap)
+    if (key === snapKey.current) return
+    snapKey.current = key
+    actions.setDesignSnapshot(snap)
+  }, [roofConfirmed, roofFaces, design, coordinates, designState, actions])
 
   const editPanels = useMemo(() => {
     const layout = design.layout
@@ -412,6 +439,7 @@ function App() {
                 <span>DESIGN CONTROLS</span>
                 <strong>{activeCard.title}</strong>
               </div>
+              {syntheticPreview && <div className="info-box synthetic-banner">{SYNTHETIC_BANNER}</div>}
 
               {activeStep === 'property' && (
                 <div className="control-stack">

@@ -9,13 +9,13 @@ import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
 import ValidationList from '../ValidationList'
 
 function useSummaryData() {
-  const { building } = useProject()
-  const { design, pv, profile } = useDesign()
-  return { design, pv, profile, roofFaces: building.roofFaces }
+  const { building, designSnapshot } = useProject()
+  const { design, pv, profile, state } = useDesign()
+  return { design, pv, profile, roofFaces: building.roofFaces, designSnapshot, state, latitude: building.location?.lat ?? null, confirmed: Boolean(building.roofModelAccepted) }
 }
 
 export default function SummaryStep() {
-  const { design, pv, profile, roofFaces } = useSummaryData()
+  const { design, pv, profile, roofFaces, designSnapshot, latitude, confirmed } = useSummaryData()
   const [note, setNote] = useState('')
   const shopLinks = pickShopLinks({ profile, design })
 
@@ -38,7 +38,15 @@ export default function SummaryStep() {
   }
 
   const downloadJson = () => {
-    const json = buildDesignJson({ profile, design, pv, roofFaces })
+    const json = buildDesignJson({
+      profile,
+      design,
+      pv,
+      roofFaces,
+      latitude,
+      confirmed,
+      snapshot: designSnapshot ?? undefined,
+    })
     const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

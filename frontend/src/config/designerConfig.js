@@ -88,7 +88,7 @@ export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 // Flat roofs (D2.3): panels go on tilt frames facing north instead of flush.
 export const FLAT_ROOF_MAX_PITCH_DEG = 5 // [ASSUMPTION] below this a roof is treated as flat
 export const TILT_FRAME_DEG = 10 // [ASSUMPTION] common low-profile tilt frame
-export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] mid-winter noon sun height around Melbourne/Sydney, for row spacing
+export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] used only when the design has no latitude. Melbourne is about 29°, Sydney about 33°.
 
 /**
  * Main-roof filter (lib/mainRoof.js) [ASSUMPTION - tuned on 7 public test roofs]:

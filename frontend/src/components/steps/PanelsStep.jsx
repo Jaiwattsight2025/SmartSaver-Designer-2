@@ -63,6 +63,8 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         })()}
       </small>
 
+      <details className="adjust-design">
+        <summary>Adjust design</summary>
       <label>Panel direction</label>
       <div className="two-column-buttons" role="group" aria-label="Panel direction">
         {[
@@ -95,6 +97,32 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
             actions.updateDesign({ setbackM: v, removedPanelIds: [], pinnedPanelIds: [] })
         }}
       />
+      <div className="two-column-buttons">
+        <button
+          type="button"
+          id="edit-panels"
+          className={editMode ? 'primary-button' : 'secondary-button'}
+          onClick={() => onEditMode(!editMode)}
+        >
+          {editMode ? 'Done editing' : 'Move / add / remove panels'}
+        </button>
+        {((designChoices.removedPanelIds ?? []).length > 0 || (designChoices.pinnedPanelIds ?? []).length > 0) && (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => actions.updateDesign({ removedPanelIds: [], pinnedPanelIds: [] })}
+          >
+            Reset panel layout
+          </button>
+        )}
+      </div>
+      {editMode && (
+        <small className="hint">
+          On the map: click a panel to remove it, click a blue outline to add a panel there, or drag a panel to a free
+          spot (it snaps into the row).
+        </small>
+      )}
+      </details>
 
       <label htmlFor="panel-count">Number of panels</label>
       <div className="count-row">
@@ -144,31 +172,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
           <strong>{fmtKwh(design.annualGenKwh)}</strong>
         </div>
       </div>
-      <div className="two-column-buttons">
-        <button
-          type="button"
-          id="edit-panels"
-          className={editMode ? 'primary-button' : 'secondary-button'}
-          onClick={() => onEditMode(!editMode)}
-        >
-          {editMode ? 'Done editing' : 'Move / add / remove panels'}
-        </button>
-        {((designChoices.removedPanelIds ?? []).length > 0 || (designChoices.pinnedPanelIds ?? []).length > 0) && (
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => actions.updateDesign({ removedPanelIds: [], pinnedPanelIds: [] })}
-          >
-            Reset panel layout
-          </button>
-        )}
-      </div>
-      {editMode && (
-        <small className="hint">
-          On the map: click a panel to remove it, click a blue outline to add a panel there, or drag a panel to a free
-          spot (it snaps into the row).
-        </small>
-      )}
+      {editMode && <div className="info-box">Panel editing is on. Open Adjust design to finish or to reset the layout.</div>}
 
       {layout.notes?.map((n) => (
         <div key={n} className="info-box">
@@ -180,13 +184,15 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       <small className="hint">
         Panels are laid out in straight rows from the gutter, {Math.round((designChoices.setbackM ?? ROOF_EDGE_SETBACK_M) * 100)} cm
         in from every roof edge.{' '}
-        {layout.source === 'solar-api'
-          ? 'Output comes from Google’s sun analysis of your roof; the best spots are used first.'
-          : layout.source === 'grid'
-            ? 'Output uses your state’s average sun, adjusted for roof angle.'
-            : layout.source === 'mixed'
-              ? 'Output uses Google’s sun analysis on scanned faces and your state’s average on traced faces.'
-              : ''}
+        {layout.assumptions?.some((a) => a.id === 'tilt-yield')
+          ? 'Tilt-frame output is an estimate from your state’s average sun. It is not a boost on Google’s flush figures.'
+          : layout.source === 'solar-api'
+            ? 'Output comes from Google’s sun analysis of your roof; the best spots are used first.'
+            : layout.source === 'grid'
+              ? 'Output uses your state’s average sun, adjusted for roof pitch and direction.'
+              : layout.source === 'mixed'
+                ? 'Flush faces use Google’s sun figures. Tilt-frame and traced faces use the state average.'
+                : ''}
       </small>
     </div>
   )

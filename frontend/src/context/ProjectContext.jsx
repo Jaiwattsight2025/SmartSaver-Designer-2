@@ -1,10 +1,36 @@
 import { createContext, useContext, useMemo, useReducer } from 'react'
 import { createEmptyProject, touchProject } from '../models/Project'
 import { ProfileError, profileFromUrl } from '../lib/energyProfile'
+import { SYNTHETIC_LAT, SYNTHETIC_LNG, syntheticRoofFaces } from '../lib/syntheticFixture'
 
 function createInitialProject() {
   const project = createEmptyProject()
   if (typeof window === 'undefined') return project
+  if (new URLSearchParams(window.location.search).get('preview') === 'synthetic') {
+    const faces = syntheticRoofFaces()
+    project.building = {
+      ...project.building,
+      address: 'Synthetic fixture VIC 3000',
+      formattedAddress: 'Synthetic fixture VIC 3000',
+      location: { lat: SYNTHETIC_LAT, lng: SYNTHETIC_LNG },
+      propertyFound: true,
+      mapLocked: true,
+      roofFaces: faces,
+      selectedRoofFaceId: faces[0]?.id ?? null,
+      roofModelAccepted: true,
+      solar: {
+        status: 'Connected',
+        summary: { imageryQuality: 'SYNTHETIC FIXTURE', imageryDate: '—' },
+        response: {
+          name: 'synthetic-fixture',
+          center: { latitude: SYNTHETIC_LAT, longitude: SYNTHETIC_LNG },
+          solarPotential: { roofSegmentStats: [] },
+        },
+        showDiagnostics: false,
+      },
+    }
+    return project
+  }
   try {
     const result = profileFromUrl(window.location.search, window.location.hash)
     if (result) project.energyProfile = { ...result, error: null, origin: 'link' }
@@ -42,6 +68,7 @@ const actionTypes = {
   CLEAR_ENERGY_PROFILE: 'CLEAR_ENERGY_PROFILE',
   UPDATE_DESIGN: 'UPDATE_DESIGN',
   UNCONFIRM_ROOF: 'UNCONFIRM_ROOF',
+  SET_DESIGN_SNAPSHOT: 'SET_DESIGN_SNAPSHOT',
 }
 
 // Any change to the roof means it has to be confirmed again, and hand-picked
@@ -51,6 +78,7 @@ function withFaces(state, roofFaces, selectedRoofFaceId = state.building.selecte
     ...state,
     building: { ...state.building, roofFaces, selectedRoofFaceId, roofModelAccepted: false },
     design: { ...state.design, removedPanelIds: [], pinnedPanelIds: [] },
+    designSnapshot: null,
   })
 }
 
@@ -237,6 +265,9 @@ function reducer(state, action) {
     case actionTypes.UPDATE_DESIGN:
       return touchProject({ ...state, design: { ...state.design, ...action.payload } })
 
+    case actionTypes.SET_DESIGN_SNAPSHOT:
+      return touchProject({ ...state, designSnapshot: action.payload })
+
     default:
       return state
   }
@@ -278,6 +309,7 @@ export function ProjectProvider({ children }) {
       clearEnergyProfile: () => dispatch({ type: actionTypes.CLEAR_ENERGY_PROFILE }),
       updateDesign: (payload) => dispatch({ type: actionTypes.UPDATE_DESIGN, payload }),
       unconfirmRoof: () => dispatch({ type: actionTypes.UNCONFIRM_ROOF }),
+      setDesignSnapshot: (payload) => dispatch({ type: actionTypes.SET_DESIGN_SNAPSHOT, payload }),
     }),
     [],
   )
@@ -291,6 +323,7 @@ export function ProjectProvider({ children }) {
       results: project.results,
       energyProfile: project.energyProfile,
       designChoices: project.design,
+      designSnapshot: project.designSnapshot ?? null,
       actions,
     }),
     [project, actions],

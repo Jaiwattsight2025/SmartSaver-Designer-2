@@ -40,6 +40,7 @@ export function useDesign() {
       removedPanelIds: designChoices.removedPanelIds ?? [],
       pinnedPanelIds: designChoices.pinnedPanelIds ?? [],
       obstacles: designChoices.obstacles ?? [],
+      latitude: building.location?.lat ?? insights?.center?.latitude ?? insights?.center?.lat ?? null,
     }
     const design = computeDesign({
       profile,
@@ -62,5 +63,5 @@ export function useDesign() {
       insights,
       roofConfirmed,
     }
-  }, [profile, insights, building.roofFaces, building.roofModelAccepted, building.formattedAddress, designChoices])
+  }, [profile, insights, building.roofFaces, building.roofModelAccepted, building.formattedAddress, building.location, designChoices])
 }
