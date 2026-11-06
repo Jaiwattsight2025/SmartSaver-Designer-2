@@ -8,7 +8,7 @@ import { installTypeOf } from './roofFaces'
 
 const round1 = (n) => (Number.isFinite(Number(n)) ? Math.round(Number(n) * 10) / 10 : null)
 
-export function buildDesignSnapshot({ roofFaces, design, latitude, state, confirmed = false } = {}) {
+export function buildDesignSnapshot({ roofFaces, design, latitude, state, confirmed = false, faceArrays = null } = {}) {
   const layout = design?.layout
   const faces = (roofFaces ?? [])
     .filter((f) => f.included)
@@ -21,12 +21,17 @@ export function buildDesignSnapshot({ roofFaces, design, latitude, state, confir
         roofPitchDegrees: round1(f.pitchDegrees),
         detectedPitchDegrees: round1(f.detectedPitchDegrees),
         pitchEdited: Boolean(f.pitchEdited),
-        azimuthDegrees: round1(f.azimuthDegrees),
         installType: installTypeOf(f),
         installEdited: Boolean(f.installEdited),
+        azimuthDegrees: round1(f.azimuthDegrees),
+        detectedAzimuthDegrees: round1(f.detectedAzimuthDegrees),
+        azimuthEdited: Boolean(f.azimuthEdited),
         panelTiltDegrees: round1(mount.tiltDeg),
         panelAzimuthDegrees: round1(mount.azimuthDeg),
         mounting: mount.flat ? 'tilt-frames' : 'flush',
+        arrayDxM: round1((faceArrays ?? design?.faceArrays)?.[f.id]?.dxM) ?? 0,
+        arrayDyM: round1((faceArrays ?? design?.faceArrays)?.[f.id]?.dyM) ?? 0,
+        arrayRotationDeg: round1((faceArrays ?? design?.faceArrays)?.[f.id]?.rotationDeg) ?? 0,
       }
     })
   const panels = (layout?.panels ?? []).map((p) => ({

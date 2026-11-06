@@ -110,7 +110,7 @@ export async function createMapController(container) {
   const geocoder = new maps.Geocoder()
 
   // Drawn on top of the satellite image: roof faces, panels, a face being traced.
-  const overlays = { faces: [], panels: [], obstacles: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null }
+  const overlays = { faces: [], panels: [], obstacles: [], handles: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null, zoomHold: false }
   const clearList = (list) => {
     list.forEach((o) => o.setMap(null))
     list.length = 0
@@ -221,7 +221,7 @@ export async function createMapController(container) {
       for (const face of faces ?? []) {
         if (!face.vertices || face.vertices.length < 3) continue
         const selected = face.id === opts.selectedId
-        const editable = Boolean(opts.onEdit) && face.id === opts.editableId && !overlays.traceListener
+        const editable = Boolean(opts.onEdit) && face.id === opts.editableId && !overlays.traceListener && !opts.handlesInstead
         const lowConfidence = face.outlineConfidence === 'low' && !face.outlineEdited
         const polygon = new maps.Polygon({
           map,
@@ -406,6 +406,73 @@ export async function createMapController(container) {
       clearList(overlays.faces)
       clearList(overlays.panels)
       clearList(overlays.obstacles)
+      clearList(overlays.handles)
+    },
+
+    /**
+     * Larger corner dots (pixel-sized, so they stay touchable).
+     * Dragging one moves that corner. A smaller dot in the middle of an edge inserts a corner.
+     */
+    showCornerHandles(points, { onChange } = {}) {
+      clearList(overlays.handles)
+      if (!points || points.length < 3 || !onChange) return
+      const commit = (next) => {
+        if (next.length >= 3) onChange(next.map((p) => ({ lat: p.lat, lng: p.lng })))
+      }
+      points.forEach((p, index) => {
+        const marker = new maps.Marker({
+          map,
+          position: p,
+          draggable: true,
+          zIndex: 30,
+          title: 'Drag this corner. Zooming does not make the aerial photo sharper.',
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: '#ffffff',
+            fillOpacity: 1,
+            strokeColor: '#0f6b4a',
+            strokeWeight: 2,
+          },
+        })
+        marker.addListener('dragend', () => {
+          const ll = marker.getPosition()
+          const next = points.map((pt, i) => (i === index ? { lat: ll.lat(), lng: ll.lng() } : pt))
+          commit(next)
+        })
+        overlays.handles.push(marker)
+      })
+      points.forEach((p, index) => {
+        const q = points[(index + 1) % points.length]
+        const mid = { lat: (p.lat + q.lat) / 2, lng: (p.lng + q.lng) / 2 }
+        const marker = new maps.Marker({
+          map,
+          position: mid,
+          draggable: true,
+          zIndex: 29,
+          title: 'Drag to add a corner',
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 7,
+            fillColor: '#f5a623',
+            fillOpacity: 0.9,
+            strokeColor: '#ffffff',
+            strokeWeight: 1,
+          },
+        })
+        marker.addListener('dragend', () => {
+          const ll = marker.getPosition()
+          const next = [...points]
+          next.splice(index + 1, 0, { lat: ll.lat(), lng: ll.lng() })
+          commit(next)
+        })
+        overlays.handles.push(marker)
+      })
+    },
+
+    /** While an outline is being edited, automatic fit-to-roof must not pull the zoom back. */
+    holdZoom(hold) {
+      overlays.zoomHold = Boolean(hold)
     },
 
     /** Centre on a point without changing zoom (used when the map is locked). */
@@ -415,8 +482,25 @@ export async function createMapController(container) {
       if (zoom) map.setZoom(zoom)
     },
 
+    /**
+     * Zoom to the closest the map allows on one face (level 21).
+     * This does not increase the sharpness of the aerial photo.
+     */
+    focusFace(face) {
+      const points = face?.vertices ?? []
+      if (points.length < 3) return
+      const bounds = new maps.LatLngBounds()
+      points.forEach((point) => bounds.extend(point))
+      overlays.zoomHold = true
+      map.fitBounds(bounds, 24)
+      maps.event.addListenerOnce(map, 'idle', () => {
+        map.setZoom(21)
+      })
+    },
+
     /** Zoom the map so every roof face fills the view (max zoom 21). */
     fitToFaces(faces) {
+      if (overlays.zoomHold) return
       const points = (faces ?? []).flatMap((face) => face.vertices ?? [])
       if (points.length < 3) return
       const bounds = new maps.LatLngBounds()

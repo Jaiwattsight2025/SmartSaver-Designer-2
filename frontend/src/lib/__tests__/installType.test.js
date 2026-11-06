@@ -30,7 +30,7 @@ describe('pitch and install type', () => {
     expect(pitched.installType).toBe('flush')
     expect(pitched.pitchEdited).toBe(false)
     expect(pitched.installEdited).toBe(false)
-    expect(mountFor(pitched)).toEqual({ flat: false, tiltDeg: 22.4, azimuthDeg: 1 })
+    expect(mountFor(pitched)).toEqual({ flat: false, tiltDeg: 22.4, azimuthDeg: 1.2 })
     expect(mountHint(pitched)).toMatch(/Roof pitch 22.4° \(detected from Google's roof data\)/)
     expect(mountHint(pitched)).toMatch(/panel tilt is the roof pitch/)
     expect(isFlatPitch(4.9)).toBe(true)

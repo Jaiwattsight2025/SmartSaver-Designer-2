@@ -1,16 +1,44 @@
+import { useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
-import { MODULE_WATT_OPTIONS, ROOF_EDGE_SETBACK_M } from '../../config/designerConfig'
-import { moduleSize } from '../../lib/panelLayout'
+import { MAX_RESIDENTIAL_KW, MODULE_WATT_OPTIONS, PLANNING_KW_MAX, PLANNING_KW_MIN, ROOF_EDGE_SETBACK_M } from '../../config/designerConfig'
+import { assessFaceArray, fillFace, moduleSize, proposeCentre } from '../../lib/panelLayout'
 import ValidationList from '../ValidationList'
 import { fmtKw, fmtKwh } from '../../lib/format'
 
 export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEditMode }) {
-  const { actions, energyProfile, designChoices } = useProject()
+  const { actions, energyProfile, designChoices, building } = useProject()
   const { pv, design, suggestedPanels } = useDesign()
   const { layout } = design
   const profile = energyProfile?.profile
   const wanted = pv.panelCount
+  const [alignNote, setAlignNote] = useState('')
+  const arrays = designChoices.faceArrays ?? {}
+  const alignFace = (building.roofFaces ?? []).find((f) => f.id === building.selectedRoofFaceId && f.included) ?? null
+  const align = alignFace ? arrays[alignFace.id] ?? { dxM: 0, dyM: 0, rotationDeg: 0 } : null
+  const setback = designChoices.setbackM ?? ROOF_EDGE_SETBACK_M
+
+  const commitArray = (face, next) => {
+    const ids = new Set(layout.panels.filter((p) => p.faceId === face.id).map((p) => p.id))
+    const grids = fillFace(face, { moduleWatts: pv.moduleWatts, setbackM: setback }).cells.filter((c) => ids.has(c.id))
+    const verdict = assessFaceArray(face, grids, next, { setbackM: setback, obstacles: designChoices.obstacles })
+    if (!verdict.ok) {
+      setAlignNote(`${verdict.reason} The panels were not moved.`)
+      return
+    }
+    setAlignNote('')
+    actions.updateDesign({
+      faceArrays: {
+        ...arrays,
+        [face.id]: {
+          dxM: next.dxM || 0,
+          dyM: next.dyM || 0,
+          rotationDeg: next.rotationDeg || 0,
+          undo: { dxM: align.dxM || 0, dyM: align.dyM || 0, rotationDeg: align.rotationDeg || 0 },
+        },
+      },
+    })
+  }
 
   if (!roofConfirmed) {
     return (
@@ -63,8 +91,92 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         })()}
       </small>
 
+      <p className="mount-summary">
+        These faces fit {layout.spatialCount ?? layout.available} panels inside the setbacks
+        {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. This design
+        places {layout.count} ({fmtKw(layout.dcKw)}). The fit and the target are separate.
+      </p>
       <details className="adjust-design">
         <summary>Adjust design</summary>
+        <label htmlFor="planning-kw">Planning size (kW)</label>
+        <input
+          id="planning-kw"
+          type="number"
+          min={PLANNING_KW_MIN}
+          max={PLANNING_KW_MAX}
+          step="0.1"
+          value={designChoices.planningKw ?? MAX_RESIDENTIAL_KW}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            if (Number.isFinite(v) && v >= PLANNING_KW_MIN && v <= PLANNING_KW_MAX) actions.updateDesign({ planningKw: v })
+          }}
+        />
+        <small className="hint">
+          A planning assumption, not a network approval. The roof can fit more than this. Setbacks are not removed to make room.
+        </small>
+        <strong>Line up this face&apos;s panels</strong>
+        <small className="hint">
+          {alignFace
+            ? `${alignFace.label}. Sliding or rotating here stays on the roof. It does not change which way the panels face the sun.`
+            : 'Select a ticked roof face on the map first.'}
+        </small>
+        {alignFace && (
+          <>
+            <div className="two-column-buttons">
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, dxM: (align.dxM || 0) - 0.1 })}>
+                Along gutter −
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, dxM: (align.dxM || 0) + 0.1 })}>
+                Along gutter +
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, dyM: (align.dyM || 0) - 0.1 })}>
+                Up the roof
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, dyM: (align.dyM || 0) + 0.1 })}>
+                Toward gutter
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, rotationDeg: (align.rotationDeg || 0) - 5 })}>
+                Rotate −5°
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, rotationDeg: (align.rotationDeg || 0) + 5 })}>
+                Rotate +5°
+              </button>
+            </div>
+            <div className="two-column-buttons">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  const ids = new Set(layout.panels.filter((p) => p.faceId === alignFace.id).map((p) => p.id))
+                  const grids = fillFace(alignFace, { moduleWatts: pv.moduleWatts, setbackM: setback }).cells.filter((c) => ids.has(c.id))
+                  const proposal = proposeCentre(alignFace, grids, { setbackM: setback, rotationDeg: align.rotationDeg || 0 })
+                  if (!proposal.ok) {
+                    setAlignNote(`${proposal.reason} The panels were not moved.`)
+                    return
+                  }
+                  commitArray(alignFace, proposal.adjust)
+                }}
+              >
+                Centre on face
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!align.undo}
+                onClick={() => align.undo && commitArray(alignFace, align.undo)}
+              >
+                Undo alignment
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { dxM: 0, dyM: 0, rotationDeg: 0 })}>
+                Reset alignment
+              </button>
+              <button type="button" className="secondary-button" onClick={() => actions.selectRoofFace(null)}>
+                Clear selected face
+              </button>
+            </div>
+          </>
+        )}
+        {alignNote && <div className="info-box error">{alignNote}</div>}
       <label>Panel direction</label>
       <div className="two-column-buttons" role="group" aria-label="Panel direction">
         {[

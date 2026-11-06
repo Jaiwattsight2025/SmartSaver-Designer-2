@@ -36,6 +36,8 @@ export function createEmptyProject() {
       removedPanelIds: [],
       pinnedPanelIds: [],
       obstacles: [], // [{ id, vertices: [{lat,lng}] }] no-go areas
+      planningKw: null, // null = default planning size. Not a network limit.
+      faceArrays: {}, // faceId -> { dxM, dyM, rotationDeg, undo } in-plane only
     },
     results: {
       annualIrradianceKwhM2: null,

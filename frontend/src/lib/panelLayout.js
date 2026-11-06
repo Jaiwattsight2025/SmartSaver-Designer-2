@@ -19,7 +19,6 @@ import {
   PANEL_CLICK_SLOP_M,
   MAX_RESIDENTIAL_KW,
   MIN_PANELS_PER_FACE,
-  MIN_PANELS_PER_FACE_SMALL,
   MODULE_DIMENSIONS_BY_WATTS,
   MODULE_HEIGHT_M,
   MODULE_WIDTH_M,
@@ -27,7 +26,7 @@ import {
   PANEL_GAP_M,
   ROOF_EDGE_SETBACK_M,
   ROW_GAP_M,
-  SMALL_SYSTEM_PANELS,
+  SMALL_GROUP_WARN_PANELS,
   TILT_FRAME_DEG,
   WINTER_NOON_SUN_DEG,
   BLOCK_MAX_ASPECT,
@@ -36,6 +35,7 @@ import { centroid, fromLocal, toLatLng, toLocal } from './geo'
 import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
 import { faceAxes, fromFaceUV, toFaceUV } from './roofOutline'
 import { googlePanelSize, installTypeOf, isFlatPitch } from './roofFaces'
+import { centreAdjust, checkAdjust } from './arrayAdjust'
 import { stateYield } from './energyModel'
 
 const RAD = Math.PI / 180
@@ -268,6 +268,7 @@ export function layoutPanels({
   maxKw = MAX_RESIDENTIAL_KW,
   minPanelsPerFace,
   latitude,
+  faceArrays = {},
 }) {
   const sunFromLatitude = winterNoonSunDeg(latitude)
   const sunDeg = sunFromLatitude ?? WINTER_NOON_SUN_DEG
@@ -391,25 +392,32 @@ export function layoutPanels({
   const eligibleTotal = (min) =>
     pinnedCells.length + [...byFace.values()].reduce((t, f) => t + (manual(f) || f.elig.length >= min ? f.elig.length : 0), 0)
   const explicitMin = Math.round(Number(minPanelsPerFace) || 0) > 0 ? Math.round(Number(minPanelsPerFace)) : null
-  let minPer = explicitMin ?? (wanted <= SMALL_SYSTEM_PANELS ? MIN_PANELS_PER_FACE_SMALL : MIN_PANELS_PER_FACE)
-  let available = eligibleTotal(explicitMin ?? MIN_PANELS_PER_FACE)
-  if (available < wanted && minPer < (explicitMin ?? MIN_PANELS_PER_FACE)) available = eligibleTotal(minPer)
+  let minPer = explicitMin ?? MIN_PANELS_PER_FACE
+  let available = eligibleTotal(minPer)
   if (available === 0 && all.length > 0) {
     minPer = 1
     available = all.length
-    notes.push('Only small roof areas are available, so panels sit in small groups.')
   }
   const smallFaces = faceStats.filter((s) => {
     const f = byFace.get(s.faceId)
     return !manual(f) && f.elig.length > 0 && f.elig.length < minPer
   })
 
+  const spatialCount = available
   let count = Math.min(wanted, available)
   let capped = false
+  let limitedBy = wanted > spatialCount ? 'space' : 'target'
   if (count > maxByKw) {
     count = maxByKw
     capped = true
-    notes.push(`Capped at ${maxByKw} panels (${maxKw} kW) - the usual limit for a home connection. Check with your network.`)
+    limitedBy = 'planning'
+    notes.push(
+      `The roof fits ${spatialCount} panels inside the setbacks. The planning size is ${maxKw} kW (${maxByKw} panels), so the design stops there. That size is a planning assumption you can change. It is not a statement of what your network allows.`,
+    )
+  } else if (wanted > spatialCount) {
+    notes.push(
+      `Only ${spatialCount} panels fit inside the setbacks and gaps on the faces you ticked. Your target asked for ${wanted}. The setbacks are unchanged.`,
+    )
   }
   if (blockedByObstacles) notes.push(`${blockedByObstacles} spot${blockedByObstacles === 1 ? '' : 's'} left clear around no-go areas.`)
   if (overlapDropped) notes.push(`${overlapDropped} spot${overlapDropped === 1 ? '' : 's'} skipped where two faces overlap.`)
@@ -491,15 +499,20 @@ export function layoutPanels({
       },
     )
   }
-  const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
-  const sources = new Set(panels.map((p) => p.source))
+  const placed = applyFaceArrays(panels, included, faceArrays, { setbackM: layoutOpts({ setbackM }).setbackM, obstacles, notes })
+  const candidates = [...placed, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
+  const sources = new Set(placed.map((p) => p.source))
   return {
-    panels,
+    panels: placed,
     candidates,
     available,
     maxByKw,
     count,
     capped,
+    spatialCount,
+    planningMaxPanels: Number.isFinite(maxByKw) ? maxByKw : null,
+    planningKw: maxKw,
+    limitedBy,
     dcKw: (count * moduleWatts) / 1000,
     annualAcKwh: panels.reduce((s, p) => s + p.yearlyAcKwh, 0),
     source: sources.size === 0 ? 'none' : sources.size > 1 ? 'mixed' : [...sources][0],
@@ -536,6 +549,56 @@ export function resolvePanelDrag(origin, drop, candidates, { exclude = [], maxM 
   const at = toLocal(d, cell.center)
   if (Math.hypot(at.x, at.y) < dist) return { type: 'move', cell }
   return { type: 'cancel' }
+}
+
+function applyFaceArrays(panels, faces, faceArrays, { setbackM, obstacles, notes }) {
+  const out = []
+  const seen = new Set()
+  for (const face of faces ?? []) {
+    const mine = panels.filter((p) => p.faceId === face.id)
+    mine.forEach((p) => seen.add(p.id))
+    const adj = faceArrays?.[face.id]
+    const active = adj && ((Number(adj.dxM) || 0) !== 0 || (Number(adj.dyM) || 0) !== 0 || (Number(adj.rotationDeg) || 0) !== 0)
+    if (!mine.length || !active) {
+      out.push(...mine)
+      continue
+    }
+    const verdict = assessFaceArray(face, mine, adj, { setbackM, obstacles })
+    if (!verdict.ok) {
+      notes.push(`${face.label}: the array alignment was not applied. ${verdict.reason} The panels stay on the grid.`)
+      out.push(...mine)
+      continue
+    }
+    const frame = faceFrame(face)
+    out.push(
+      ...mine.map((p, i) => {
+        const uv = verdict.uv[i]
+        const ctr = { x: uv.reduce((s, q) => s + q.x, 0) / uv.length, y: uv.reduce((s, q) => s + q.y, 0) / uv.length }
+        return { ...p, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng(ctr) }
+      }),
+    )
+  }
+  for (const p of panels) if (!seen.has(p.id)) out.push(p)
+  return out
+}
+
+/** In-plane translation that centres the array, or a reason there is no valid centre. */
+export function proposeCentre(face, gridPanels, { setbackM = ROOF_EDGE_SETBACK_M, rotationDeg = 0 } = {}) {
+  const frame = faceFrame(face)
+  const inner = insetPolygon(frame.poly, setbackM)
+  const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
+  return centreAdjust(polys, inner, { rotationDeg })
+}
+
+/** Check an in-plane move against the setback and no-go areas. Does not change yield. */
+export function assessFaceArray(face, gridPanels, adjust, { setbackM = ROOF_EDGE_SETBACK_M, obstacles = [] } = {}) {
+  const frame = faceFrame(face)
+  const inner = insetPolygon(frame.poly, setbackM)
+  const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
+  const obs = (obstacles ?? [])
+    .filter((o) => o?.vertices?.length >= 3)
+    .map((o) => o.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))
+  return checkAdjust(polys, inner, obs, adjust)
 }
 
 /** Nearest free panel spot to a lat/lng (for drag-and-snap), or null if none is close. */
@@ -667,7 +730,7 @@ export function validateLayout(layout, faces, { setbackM = ROOF_EDGE_SETBACK_M, 
     const onObstacle = geo.filter((g) => obs.some((ob) => polygonsOverlap(g.xy, ob))).length
     if (onObstacle) issues.push({ level: 'error', message: `${onObstacle} panel${onObstacle === 1 ? '' : 's'} sit on a no-go area.` })
   }
-  const min = minPanelsPerFace ?? layout?.minPanelsPerFace ?? MIN_PANELS_PER_FACE
+  const min = minPanelsPerFace ?? SMALL_GROUP_WARN_PANELS
   const perFace = new Map()
   for (const p of panels) perFace.set(p.faceId, (perFace.get(p.faceId) ?? 0) + 1)
   for (const [faceId, n] of perFace) {

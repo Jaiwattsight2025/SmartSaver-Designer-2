@@ -24,6 +24,13 @@ export function defaultInstallType(pitchDegrees) {
   return isFlatPitch(pitchDegrees) ? INSTALL_TILT : INSTALL_FLUSH
 }
 
+/** 0° is north, 90° is east, clockwise. 360 and -10 both land in 0–360. */
+export function wrapAzimuth(deg) {
+  const n = Number(deg)
+  if (!Number.isFinite(n)) return 0
+  return Math.round((((n % 360) + 360) % 360) * 10) / 10
+}
+
 /** The install type to use: a saved choice, otherwise the pitch default. */
 export function installTypeOf(face) {
   if (face?.installType === INSTALL_TILT || face?.installType === INSTALL_FLUSH) return face.installType
@@ -135,7 +142,9 @@ export function facesFromBuildingInsights(insights) {
       installType: defaultInstallType(roundedPitch),
       installEdited: false,
       pitchEdited: false,
-      azimuthDegrees: Math.round(azimuth),
+      azimuthDegrees: wrapAzimuth(azimuth),
+      detectedAzimuthDegrees: wrapAzimuth(azimuth),
+      azimuthEdited: false,
       orientation: orientationFromAzimuth(azimuth),
       sunshineKwhM2: sunshine,
       sunExposure: sunExposure(sunshine),
@@ -183,6 +192,8 @@ export function manualFace({ id, vertices, pitchDegrees = 20, azimuthDegrees = 0
     installEdited: false,
     pitchEdited: false,
     azimuthDegrees: azimuth,
+    detectedAzimuthDegrees: azimuth,
+    azimuthEdited: false,
     orientation: orientationFromAzimuth(azimuth),
     sunshineKwhM2: null,
     sunExposure: 'Unknown',
@@ -233,6 +244,17 @@ export function editedPitch(face, pitchDegrees) {
   // A pitch edit follows the flat/pitched rule until the customer has chosen an install type themselves.
   if (!face?.installEdited) next.installType = defaultInstallType(pitch)
   return next
+}
+
+/** Roof slope direction. Does not move the traced outline. */
+export function editedAzimuth(face, deg) {
+  const azimuth = wrapAzimuth(deg)
+  return { azimuthDegrees: azimuth, azimuthEdited: true, orientation: orientationFromAzimuth(azimuth) }
+}
+
+export function resetAzimuth(face) {
+  const azimuth = wrapAzimuth(face?.detectedAzimuthDegrees ?? face?.azimuthDegrees)
+  return { azimuthDegrees: azimuth, azimuthEdited: false, orientation: orientationFromAzimuth(azimuth) }
 }
 
 /** Changes to apply when the customer picks flush or tilt frames. */
@@ -343,6 +365,10 @@ export function splitFace(face, a, b) {
     return {
       ...piece,
       detectedPitchDegrees: face.detectedPitchDegrees ?? face.pitchDegrees,
+      detectedAzimuthDegrees: i === keep ? (face.detectedAzimuthDegrees ?? face.azimuthDegrees) : piece.azimuthDegrees,
+      azimuthDegrees: i === keep ? face.azimuthDegrees : piece.azimuthDegrees,
+      azimuthEdited: i === keep ? Boolean(face.azimuthEdited) : false,
+      orientation: i === keep ? face.orientation : piece.orientation,
       installType: face.installEdited ? installTypeOf(face) : piece.installType,
       installEdited: Boolean(face.installEdited),
       pitchEdited: Boolean(face.pitchEdited),

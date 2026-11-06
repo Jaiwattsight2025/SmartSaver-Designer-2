@@ -53,6 +53,7 @@ const actionTypes = {
   ACCEPT_ROOF_MODEL: 'ACCEPT_ROOF_MODEL',
   TOGGLE_ROOF_FACE: 'TOGGLE_ROOF_FACE',
   UPDATE_ROOF_FACE: 'UPDATE_ROOF_FACE',
+  UPDATE_ROOF_FACE_LIVE: 'UPDATE_ROOF_FACE_LIVE',
   ADD_ROOF_FACE: 'ADD_ROOF_FACE',
   REMOVE_ROOF_FACE: 'REMOVE_ROOF_FACE',
   SET_ENERGY_PROFILE: 'SET_ENERGY_PROFILE',
@@ -236,6 +237,15 @@ function reducer(state, action) {
         state.building.roofFaces.map((f) => (f.id === action.payload.id ? { ...f, ...action.payload.changes } : f)),
       )
 
+    case actionTypes.UPDATE_ROOF_FACE_LIVE:
+      return touchProject({
+        ...state,
+        building: {
+          ...state.building,
+          roofFaces: state.building.roofFaces.map((f) => (f.id === action.payload.id ? { ...f, ...action.payload.changes } : f)),
+        },
+      })
+
     case actionTypes.ADD_ROOF_FACE:
       return withFaces(state, [...state.building.roofFaces, action.payload], action.payload.id)
 
@@ -310,6 +320,8 @@ export function ProjectProvider({ children }) {
       toggleRoofFace: (id) => dispatch({ type: actionTypes.TOGGLE_ROOF_FACE, payload: id }),
       updateRoofFace: (id, changes) =>
         dispatch({ type: actionTypes.UPDATE_ROOF_FACE, payload: { id, changes } }),
+      updateRoofFaceLive: (id, changes) =>
+        dispatch({ type: actionTypes.UPDATE_ROOF_FACE_LIVE, payload: { id, changes } }),
       addRoofFace: (face) => dispatch({ type: actionTypes.ADD_ROOF_FACE, payload: face }),
       removeRoofFace: (id) => dispatch({ type: actionTypes.REMOVE_ROOF_FACE, payload: id }),
       setEnergyProfile: (payload) => dispatch({ type: actionTypes.SET_ENERGY_PROFILE, payload }),

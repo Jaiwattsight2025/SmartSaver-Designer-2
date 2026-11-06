@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { FLAT_ROOF_MAX_PITCH_DEG, TILT_FRAME_DEG } from '../../config/designerConfig'
 import { no3dRoofNote } from '../../lib/buildingMatch'
 import {
+  editedAzimuth,
   editedInstall,
   editedOutline,
   editedPitch,
+  resetAzimuth,
+  wrapAzimuth,
   faceOverlaps,
   installTypeOf,
   isFlatPitch,
@@ -15,9 +18,37 @@ import {
   splitFace,
 } from '../../lib/roofFaces'
 
-function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline, onSplit }) {
+function FaceCard({
+  face,
+  faces,
+  selected,
+  onSelect,
+  onToggle,
+  onUpdate,
+  onUpdateLive,
+  onRemove,
+  onResetOutline,
+  onSplit,
+  outlineEditing,
+  onOutlineEdit,
+  onFocusFace,
+  canUndoOutline,
+  onUndoOutline,
+}) {
   return (
-    <div className={`roof-face-card ${selected ? 'selected' : ''} ${face.included ? 'included' : ''}`} onClick={onSelect}>
+    <div
+      id={`roof-face-${face.id}`}
+      className={`roof-face-card ${selected ? 'selected' : ''} ${face.included ? 'included' : ''}`}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      tabIndex={0}
+      aria-label={`${face.label}, ${face.orientation}, ${face.azimuthDegrees} degrees`}
+    >
       <div className="face-row">
         <label className="face-toggle" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={face.included} onChange={onToggle} aria-label={`Use ${face.label}`} />
@@ -70,11 +101,43 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
         </div>
       )}
       <p className="mount-summary">{mountSummary(face)}</p>
-      <details className="adjust-design" onClick={(e) => e.stopPropagation()}>
+      <p className="mount-summary azimuth-line">
+        Roof faces {face.orientation} ({wrapAzimuth(face.azimuthDegrees)}°). 0° is north and 90° is east, clockwise.
+        {face.azimuthEdited ? ' You set this direction.' : ' Detected direction.'}
+      </p>
+      {selected && <details className="adjust-design" onClick={(e) => e.stopPropagation()}>
         <summary>Adjust design</summary>
-        <FaceMount face={face} onUpdate={onUpdate} />
+        <FaceMount face={face} onUpdate={onUpdateLive ?? onUpdate} />
+        <AzimuthEditor face={face} faces={faces} onUpdate={onUpdateLive ?? onUpdate} />
+        <div className="two-column-buttons">
+          {outlineEditing ? (
+            <button type="button" className="primary-button" onClick={() => onOutlineEdit(null)}>
+              Done editing outline
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                onOutlineEdit(face.id)
+                onFocusFace?.(face)
+              }}
+            >
+              Edit outline
+            </button>
+          )}
+          <button type="button" className="secondary-button" onClick={onUndoOutline} disabled={!canUndoOutline}>
+            Undo last corner
+          </button>
+        </div>
+        {outlineEditing && (
+          <small className="hint">
+            Zoomed as close as the map allows. That does not make the aerial photo sharper. Drag the large white dots
+            to move corners, or an orange dot to add one. Drag the map background to pan.
+          </small>
+        )}
         {selected && face.source === 'solar-api' && (
-          <small>Drag the white corner dots on the map to match the roof edges. Drag a middle dot to add a corner, right-click a corner to delete one.</small>
+          <small>Use Edit outline for the corner dots. Undo puts back the last corner change.</small>
         )}
         {selected && face.source === 'solar-api' && (face.originalVertices || face.estimateVertices) && (
           <div className="face-edit" onClick={(e) => e.stopPropagation()}>
@@ -100,7 +163,7 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
         <div className="face-edit face-edit-azimuth" onClick={(e) => e.stopPropagation()}>
           <label>
             Direction
-            <select value={face.azimuthDegrees} onChange={(e) => onUpdate({ azimuthDegrees: Number(e.target.value) })}>
+            <select value={wrapAzimuth(face.azimuthDegrees)} onChange={(e) => (onUpdateLive ?? onUpdate)(editedAzimuth(face, e.target.value), true)}>
               {[
                 ['North', 0],
                 ['North-east', 45],
@@ -128,18 +191,84 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
           </button>
         </div>
         )}
-      </details>
+      </details>}
     </div>
   )
 }
 
-export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }) {
+function AzimuthEditor({ face, faces, onUpdate }) {
+  const others = (faces ?? []).filter((f) => f.id !== face.id)
+  return (
+    <div className="azimuth-editor">
+      <label>
+        Roof direction °
+        <input
+          type="number"
+          min="0"
+          max="359.9"
+          step="1"
+          aria-label={`Direction of ${face.label} in degrees, 0 is north`}
+          value={wrapAzimuth(face.azimuthDegrees)}
+          onChange={(e) => onUpdate(editedAzimuth(face, e.target.value), true)}
+        />
+      </label>
+      <small className="hint">
+        0° north, 90° east, clockwise. This is the way the roof slopes, which is the way flush panels face. It does not
+        spin the panels flat on the roof. That control is on the Panels step.
+      </small>
+      <div className="two-column-buttons">
+        <button type="button" className="secondary-button" onClick={() => onUpdate(resetAzimuth(face), true)} disabled={!face.azimuthEdited}>
+          Reset to detected
+        </button>
+        {others.length > 0 && (
+          <label>
+            Match another face
+            <select
+              aria-label={`Match the direction of ${face.label} to another face`}
+              defaultValue=""
+              onChange={(e) => {
+                const other = others.find((f) => f.id === e.target.value)
+                if (other) onUpdate(editedAzimuth(face, other.azimuthDegrees), true)
+              }}
+            >
+              <option value="">Choose a face</option>
+              {others.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label} ({wrapAzimuth(f.azimuthDegrees)}°)
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function RoofStep({
+  map,
+  onGoToProperty,
+  onGoToPanels,
+  onRedraw,
+  outlineEditId = null,
+  onOutlineEdit,
+  onFocusFace,
+  canUndoOutline = false,
+  onUndoOutline,
+}) {
   const { building, designChoices, actions } = useProject()
   const [tracePoints, setTracePoints] = useState(null) // null = not tracing
   const [traceKind, setTraceKind] = useState('face') // 'face' | 'obstacle' | 'split'
   const [splitError, setSplitError] = useState('')
   const [toolsOpen, setToolsOpen] = useState(false)
   const faces = building.roofFaces
+  const selectedId = building.selectedRoofFaceId
+  const scrolled = useRef(null)
+  useEffect(() => {
+    if (!selectedId || scrolled.current === selectedId) return
+    scrolled.current = selectedId
+    document.getElementById(`roof-face-${selectedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedId])
   const obstacles = designChoices?.obstacles ?? []
   const overlaps = faceOverlaps(faces)
   const confirmed = Boolean(building.roofModelAccepted)
@@ -263,7 +392,17 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             selected={face.id === building.selectedRoofFaceId}
             onSelect={() => actions.selectRoofFace(face.id)}
             onToggle={() => actions.toggleRoofFace(face.id)}
+            faces={faces}
             onUpdate={(changes) => recalc(face, changes)}
+            onUpdateLive={(changes, direct) => {
+              if (direct) actions.updateRoofFaceLive(face.id, changes)
+              else recalc(face, changes)
+            }}
+            outlineEditing={outlineEditId === face.id}
+            onOutlineEdit={onOutlineEdit}
+            onFocusFace={onFocusFace}
+            canUndoOutline={outlineEditId === face.id && canUndoOutline}
+            onUndoOutline={onUndoOutline}
             onRemove={() => actions.removeRoofFace(face.id)}
             onSplit={tracePoints === null && map ? () => startTrace('split') : undefined}
             onResetOutline={() =>

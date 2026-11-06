@@ -70,11 +70,14 @@ export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the neares
 // half a module width: the next slot's centre is ~1.15 m away, so a real move
 // has to pass the halfway line and this distance.
 export const PANEL_CLICK_SLOP_M = 0.6
-export const MIN_PANELS_PER_FACE = 4 // [ASSUMPTION] auto-fill never leaves fewer than this on a face (no odd singles)
-export const MIN_PANELS_PER_FACE_SMALL = 2 // ...or this for a tiny system
-export const SMALL_SYSTEM_PANELS = 8 // a target of this many panels or fewer counts as tiny
+export const MIN_PANELS_PER_FACE = 1 // placement floor: 1–3 panels are allowed for planning
+export const SMALL_GROUP_WARN_PANELS = 4 // warning only: small groups are harder to wire. Not a placement ban.
+export const MIN_PANELS_PER_FACE_SMALL = 1
+export const SMALL_SYSTEM_PANELS = 8
+export const PLANNING_KW_MIN = 1
+export const PLANNING_KW_MAX = 100 // adjustable planning size, not a network determination
 export const MIN_FACE_AREA_M2 = 4 // faces smaller than this are not worth a panel row
-export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] same as Wattsight (check DNSP)
+export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] default planning size, not a statement of what the network allows
 
 // Inverter & battery
 export const INVERTER_SIZES_KW = [3, 5, 6, 8, 10, 15] // [ASSUMPTION] common single/three-phase sizes

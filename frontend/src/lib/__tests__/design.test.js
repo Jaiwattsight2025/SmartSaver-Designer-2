@@ -34,7 +34,7 @@ describe('roof faces from the Solar API', () => {
   const faces = facesFromBuildingInsights(insightsFixture)
   it('makes one face per segment with pitch, azimuth and area', () => {
     expect(faces).toHaveLength(3)
-    expect(faces[0]).toMatchObject({ pitchDegrees: 22.4, azimuthDegrees: 1, orientation: 'North', areaSquareMetres: 62.5, googlePanelCount: 24, sunExposure: 'High' })
+    expect(faces[0]).toMatchObject({ pitchDegrees: 22.4, azimuthDegrees: 1.2, orientation: 'North', areaSquareMetres: 62.5, googlePanelCount: 24, sunExposure: 'High' })
     expect(faces[0].vertices.length).toBeGreaterThanOrEqual(4)
   })
   it('includes the sunny north face, excludes the shady south and tiny west faces', () => {

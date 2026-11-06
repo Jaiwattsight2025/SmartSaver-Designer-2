@@ -89,6 +89,9 @@ function App() {
 
   // Panel edit mode (step 3): click a panel to remove it, click a blue ghost to add one, drag to move.
   const [panelEdit, setPanelEdit] = useState(false)
+  const [outlineEditId, setOutlineEditId] = useState(null)
+  const outlineUndo = useRef(null)
+  const [canUndoOutline, setCanUndoOutline] = useState(false)
   // Bumped when a trace is cancelled/finished so the map redraws clickable shapes.
   const [mapTick, setMapTick] = useState(0)
   const designChoices = project.design
@@ -125,12 +128,13 @@ function App() {
       latitude: coordinates?.lat ?? null,
       state: designState,
       confirmed: true,
+      faceArrays: designChoices.faceArrays ?? {},
     })
     const key = JSON.stringify(snap)
     if (key === snapKey.current) return
     snapKey.current = key
     actions.setDesignSnapshot(snap)
-  }, [roofConfirmed, roofFaces, design, coordinates, designState, actions])
+  }, [roofConfirmed, roofFaces, design, coordinates, designState, designChoices.faceArrays, actions])
 
   const editPanels = useMemo(() => {
     const layout = design.layout
@@ -184,17 +188,30 @@ function App() {
     if (!map) return
     const showFaces = activeStep !== 'property' || roofFaces.length > 0
     const onRoof = activeStep === 'roof'
+    const onPanels = activeStep === 'panels'
+    const editingOutline = onRoof && outlineEditId
+    map.holdZoom?.(Boolean(editingOutline))
     map.showRoofFaces(showFaces ? roofFaces : [], {
-      selectedId: onRoof ? selectedRoofFaceId : null,
-      dim: !onRoof,
-      onSelect: onRoof ? actions.selectRoofFace : undefined,
-      editableId: onRoof ? selectedRoofFaceId : null,
-      onEdit: onRoof
-        ? (id, vertices) => {
-            const face = roofFaces.find((f) => f.id === id)
-            if (face) actions.updateRoofFace(id, editedOutline(face, vertices))
+      selectedId: onRoof || onPanels ? selectedRoofFaceId : null,
+      dim: !onRoof && !onPanels,
+      onSelect: onRoof || onPanels
+        ? (id) => {
+            actions.selectRoofFace(id)
+            if (outlineEditId && id !== outlineEditId) setOutlineEditId(null)
           }
         : undefined,
+      editableId: null,
+      handlesInstead: true,
+    })
+    const editFace = editingOutline ? roofFaces.find((f) => f.id === outlineEditId) : null
+    map.showCornerHandles?.(editFace?.vertices, {
+      onChange: (pts) => {
+        const face = roofFaces.find((f) => f.id === outlineEditId)
+        if (!face) return
+        outlineUndo.current = face.vertices.map((v) => ({ ...v }))
+        setCanUndoOutline(true)
+        actions.updateRoofFace(face.id, editedOutline(face, pts))
+      },
     })
     map.showObstacles(activeStep === 'roof' || activeStep === 'panels' ? designChoices.obstacles ?? [] : [])
     const showPanelsNow = activeStep !== 'property' && activeStep !== 'roof'
@@ -217,6 +234,7 @@ function App() {
     editPanels,
     mapTick,
     actions,
+    outlineEditId,
   ])
 
   // What the pill on top of the map says on steps 2-4 (step 1 uses mapMessage).
@@ -526,6 +544,25 @@ function App() {
                   onGoToProperty={() => setActiveStep('property')}
                   onGoToPanels={() => setActiveStep('panels')}
                   onRedraw={() => setMapTick((t) => t + 1)}
+                  outlineEditId={outlineEditId}
+                  onOutlineEdit={(id) => {
+                    setOutlineEditId(id)
+                    if (!id) {
+                      outlineUndo.current = null
+                      setCanUndoOutline(false)
+                      mapRef.current?.holdZoom(false)
+                    }
+                  }}
+                  onFocusFace={(face) => mapRef.current?.focusFace(face)}
+                  canUndoOutline={canUndoOutline}
+                  onUndoOutline={() => {
+                    const face = roofFaces.find((f) => f.id === outlineEditId)
+                    const prev = outlineUndo.current
+                    if (!face || !prev) return
+                    outlineUndo.current = null
+                    setCanUndoOutline(false)
+                    actions.updateRoofFace(face.id, editedOutline(face, prev))
+                  }}
                 />
               )}
               {activeStep === 'panels' && (

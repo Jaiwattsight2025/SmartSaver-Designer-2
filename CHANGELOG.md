@@ -1,5 +1,13 @@
 # Changelog
 
+## [designer-v2] – 2026-11-06 – Azimuth, outline focus, selection, capacity, array align
+
+- Roof direction is separate from the traced outline. 0° is north and 90° is east, clockwise, wrapped into 0–360. It defaults to the detected value, can be typed, matched to another face, and reset. The override stays on the face when you change steps. Changing it does not move the outline. Flush yield uses this direction. Sliding or rotating the panels on the roof does not change it, and does not change the yearly-yield figure.
+- Edit outline (under Adjust design on the selected face) zooms to level 21, the closest the map widget allows, and says the aerial photo does not get sharper. Automatic fit-to-roof is held so a corner drag does not zoom back out. Corners use larger white dots; orange dots add a corner. Undo puts back the last corner edit. Done leaves the mode. The face is not vertex-editable until then, so a normal drag pans the map.
+- Clicking a face on the map selects its card and scrolls it into view. Clicking the card selects the face on the map. Adjust design opens only on the selected face. Cards can be focused from the keyboard.
+- A face may have 1–3 panels. Fewer than four is a wiring warning, not a reason to leave the face empty. The number that fit inside the setbacks is shown separately from the target and from the planning size (default 13.2 kW, changeable from 1 to 100 kW under Adjust design). That size is described as a planning assumption, not a network approval. Setbacks are unchanged.
+- On the Panels step, Adjust design can nudge, rotate in the roof plane, centre, undo, or reset the selected face's panels. A move that would cross the setback, hit a no-go area, or overlap is refused and the panels stay put. Centring uses a point that is actually inside the outline, including on a concave face. The shift is stored with the design and written into the confirmed snapshot.
+
 ## [designer-v2] – 2026-11-06 – Energy Insights handoff, no customer JSON
 
 - Removed the customer “Load Wattsight file” control and the design JSON download. Manual bill numbers stay. “Analyse my bill in Energy Insights” links to https://wattsight-platform.onrender.com. The Designer does not take a bill file. Customer copy says Energy Insights; internal profile source ids are unchanged. The confirmed-design snapshot is still stored for a later PDF. It is not offered as a download.
