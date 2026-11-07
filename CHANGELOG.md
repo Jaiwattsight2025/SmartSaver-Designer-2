@@ -2,7 +2,7 @@
 
 ## [designer-v2] – 2026-11-07 – Spare spots, roof direction on Panels, Move map
 
-- Spare panel outlines are checked again after a slide, turn, add, remove, setback, or no-go change. A spot that no longer fits a full panel is hidden. A spot that becomes free can show. Clicking a spot uses that same check. Placed panel ids stay. A refused move does not delete them.
+- Spare panel outlines are checked again after a slide, turn, add, remove, setback, or no-go change. A spot that no longer fits a full panel is hidden. A spot that becomes free can show. The search also places a panel in a bay the gutter grid never listed, without moving the panels already there. Clicking a spot uses that same check. A refused move does not delete placed panels.
 - The Panels step shows the selected face’s roof direction and can edit it, including reset and match. That is the same direction as Confirm roof. 0° is north and 90° is east. The drawing angle is labelled separately and does not change the yearly figure. Flush output uses the roof direction. Tilt frames stay facing north. If the new direction points the rows along a different gutter, the page says the rows were redrawn.
 - Move map is a separate mode. Dragging pans. + and − zoom, and they stop at the closest zoom the map allows, which does not make the aerial photo sharper. Fit roof is explicit. Choosing a face or editing panels does not pull the view back. Outline edit still zooms in on purpose. Switching back to Move map keeps the view.
 

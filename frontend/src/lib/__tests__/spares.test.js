@@ -93,20 +93,101 @@ describe('spare slots follow the panels', () => {
   })
 })
 
+describe('off-grid pocket', () => {
+  const a = origin
+  const p = (east, north) => offset(offset(a, east, 90), north, 0)
+  // Gutter on the north edge. The east bay sits low, under the row lattice.
+  const face = manualFace({
+    id: 'bay',
+    label: 'bay',
+    vertices: [p(0, 2.6), p(0, 9), p(10, 9), p(10, 2.6), p(13.4, 2.6), p(13.4, 0), p(10, 0)],
+    pitchDegrees: 22,
+    azimuthDegrees: 0,
+  })
+
+  it('adds one panel beyond every initial grid cell, and keeps those cells', () => {
+    const grid = fillFace(face, { moduleWatts: 440, setbackM: 0.4 }).cells
+    const full = layoutPanels({
+      insights: null,
+      faces: [face],
+      panelCount: 80,
+      moduleWatts: 440,
+      state: 'VIC',
+      maxKw: 80,
+      setbackM: 0.4,
+    })
+    const gridIds = new Set(grid.map((c) => c.id))
+    const placedGrid = full.panels.filter((panel) => gridIds.has(panel.id))
+    const offGrid = full.panels.filter((panel) => !gridIds.has(panel.id))
+    expect(grid.length, `grid ${grid.length} placed ${full.count} off ${offGrid.length}`).toBeGreaterThan(0)
+    expect(placedGrid.map((panel) => panel.id).sort()).toEqual([...gridIds].sort())
+    expect(offGrid.length).toBeGreaterThan(0)
+    const pocket = offGrid[0]
+    const kept = full.panels.filter((panel) => panel.id !== pocket.id)
+    expect(canAddPanel({ panels: kept, cell: pocket, face, setbackM: 0.4 }).ok).toBe(true)
+    expect(pocket.id.startsWith('bay:open:')).toBe(true)
+    const blocked = layoutPanels({
+      insights: null,
+      faces: [face],
+      panelCount: 80,
+      moduleWatts: 440,
+      state: 'VIC',
+      maxKw: 80,
+      setbackM: 0.4,
+      obstacles: [{ id: 'vent', vertices: pocket.corners }],
+    })
+    expect(blocked.panels.some((panel) => panel.id === pocket.id)).toBe(false)
+    expect(blocked.candidates.some((c) => c.id === pocket.id)).toBe(false)
+    expect(blocked.panels.map((panel) => panel.id)).toEqual(expect.arrayContaining([...gridIds]))
+    expect(panelSlotStatus(face, pocket.uv, grid.map((c) => c.uv), { setbackM: 0.4 })).toBe('')
+    expect(panelSlotStatus(face, grid[0].uv, [grid[0].uv], { setbackM: 0.4 })).toMatch(/overlaps/)
+    const shift = { dxM: 0.35, dyM: 0, rotationDeg: 0 }
+    const grids = grid.filter((cell) => full.panels.some((panel) => panel.id === cell.id))
+    expect(assessFaceArray(face, grids, shift, { setbackM: 0.4 }).ok).toBe(true)
+    {
+      const slid = layoutPanels({
+        insights: null,
+        faces: [face],
+        panelCount: grid.length + 1,
+        moduleWatts: 440,
+        state: 'VIC',
+        maxKw: 80,
+        setbackM: 0.4,
+        pinnedPanelIds: [...gridIds],
+        faceArrays: { bay: { ...shift, panelIds: [...gridIds] } },
+      })
+      expect(slid.panels.map((panel) => panel.id)).toEqual(expect.arrayContaining([...gridIds]))
+      const added = slid.panels.find((panel) => !gridIds.has(panel.id))
+      expect(added?.id.startsWith('bay:open:')).toBe(true)
+      expect(canAddPanel({ panels: slid.panels.filter((panel) => panel.id !== added.id), cell: added, face, setbackM: 0.4 }).ok).toBe(true)
+    }
+  })
+})
+
 describe('tilt row gap', () => {
   it('does not offer a spare in the shadow between tilt-frame rows', () => {
-    const face = rect('flat', 8, 8, 2)
+    const sample = rect('tmp', 12, 10)
+    const face = manualFace({
+      id: 'flat',
+      label: 'flat',
+      vertices: sample.vertices,
+      pitchDegrees: 2,
+      azimuthDegrees: 0,
+    })
     const laid = layoutPanels({ insights: null, faces: [face], panelCount: 2, moduleWatts: 440, state: 'VIC', maxKw: 20 })
     const ids = new Set(laid.panels.map((p) => p.id))
     for (const spare of laid.candidates.filter((c) => !ids.has(c.id))) {
       expect(canAddPanel({ panels: laid.panels, cell: spare, face }).reason).not.toMatch(/tilt-frame row gap/)
     }
     const a = laid.panels[0]
-    const hit = [0.35, -0.35, 0.7, -0.7].map((dy) => {
-      const uv = a.uv.map((p) => ({ x: p.x, y: p.y + dy }))
-      const cell = { ...a, id: 'shade', uv, corners: uv.map((p) => fillFace(face, { moduleWatts: 440 }).frame.toLatLng(p)) }
+    const ys = a.uv.map((point) => point.y)
+    const height = Math.max(...ys) - Math.min(...ys)
+    const frame = fillFace(face, { moduleWatts: 440 }).frame
+    const reasons = [height + 0.2, -(height + 0.2)].map((dy) => {
+      const uv = a.uv.map((point) => ({ x: point.x, y: point.y + dy }))
+      const cell = { ...a, id: 'shade', uv, corners: uv.map((point) => frame.toLatLng(point)) }
       return canAddPanel({ panels: [a], cell, face }).reason
     })
-    expect(hit.some((reason) => /tilt-frame row gap|overlaps/.test(reason))).toBe(true)
+    expect(reasons.some((reason) => /tilt-frame row gap/.test(reason))).toBe(true)
   })
 })

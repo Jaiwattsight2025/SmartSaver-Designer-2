@@ -32,7 +32,7 @@ import {
   BLOCK_MAX_ASPECT,
 } from '../config/designerConfig'
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
-import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
+import { bandIntervals, ccw, insetPolygon, pointInPolygon, polygonInside, polygonsOverlap } from './polygon'
 import { faceAxes, fromFaceUV, toFaceUV } from './roofOutline'
 import { googlePanelSize, installTypeOf, isFlatPitch } from './roofFaces'
 import { centreAdjust, checkAdjust } from './arrayAdjust'
@@ -345,28 +345,51 @@ export function spareSlotsForFace(face, { seeds = [], blockedItems = [], moduleW
     if (!uv) continue
     accept(uv, () => ({ ...seed, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng({ x: uv.reduce((s, p) => s + p.x, 0) / uv.length, y: uv.reduce((s, p) => s + p.y, 0) / uv.length }) }))
   }
-  const inner = insetPolygon(frame.poly, o.setbackM)
-  if (inner.length < 3) return kept
-  const minU = Math.min(...inner.map((p) => p.x))
-  const maxU = Math.max(...inner.map((p) => p.x))
-  const minV = Math.min(...inner.map((p) => p.y))
-  const maxV = Math.max(...inner.map((p) => p.y))
-  let step = Math.min(0.35, Math.max(w, h) / 3)
-  const budget = 1800
-  while (step > 0 && ((maxU - minU) / step) * ((maxV - minV) / step) > budget) step *= 1.3
+  // Search the face box, not the mitred inset. A stepped outline's inset can
+  // drop a bay that still has room for one panel inside the setback.
+  const poly = frame.poly
+  if (!poly || poly.length < 3) return kept
+  const minU = Math.min(...poly.map((p) => p.x)) + o.setbackM
+  const maxU = Math.max(...poly.map((p) => p.x)) - o.setbackM
+  const minV = Math.min(...poly.map((p) => p.y)) + o.setbackM
+  const maxV = Math.max(...poly.map((p) => p.y)) - o.setbackM
+  let step = 0.4
+  const budget = 2500
+  while (step > 0 && ((maxU - minU) / step) * ((maxV - minV) / step) > budget) step *= 1.25
   const yearly = seeds.find((s) => s.yearlyAcKwh > 0)?.yearlyAcKwh ?? seeds[0]?.faceMean ?? 0
-  for (let top = maxV; top - h >= minV - 1e-9; top -= step) {
+  const tryAt = (u, v) => {
+    if (u < minU - 0.35 || v < minV - 0.35 || u + w > maxU + 0.35 || v + h > maxV + 0.35) return false
+    const uv = [
+      { x: u, y: v },
+      { x: u + w, y: v },
+      { x: u + w, y: v + h },
+      { x: u, y: v + h },
+    ]
+    const id = `${face.id}:open:${Math.round(u * 10)}:${Math.round(v * 10)}`
+    if (kept.some((c) => c.id === id)) return true
+    return accept(uv, () => slotCell(face, frame, uv, id, yearly))
+  }
+  let opened = 0
+  for (let top = maxV; top - h >= minV - 1e-9 && opened < 12; top -= step) {
     const v = top - h
-    for (let u = minU; u + w <= maxU + 1e-6; u += step) {
-      const uv = [
+    for (let u = minU; u + w <= maxU + 1e-6 && opened < 12; u += step) {
+      if (tryAt(u, v)) {
+        opened += 1
+        continue
+      }
+      const center = { x: u + w / 2, y: v + h / 2 }
+      if (!pointInPolygon(center, poly)) continue
+      if (!panelSlotStatus(face, [
         { x: u, y: v },
         { x: u + w, y: v },
         { x: u + w, y: v + h },
         { x: u, y: v + h },
-      ]
-      const id = `${face.id}:open:${Math.round(u * 10)}:${Math.round(v * 10)}`
-      if (kept.some((c) => c.id === id)) continue
-      accept(uv, () => slotCell(face, frame, uv, id, yearly))
+      ], taken, opts).includes('setback')) continue
+      for (const du of [-0.15, 0.15, -0.3, 0.3]) {
+        for (const dv of [-0.15, 0.15, -0.3, 0.3]) {
+          if (tryAt(u + du, v + dv)) opened += 1
+        }
+      }
     }
   }
   return kept
