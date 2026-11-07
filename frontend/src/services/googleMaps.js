@@ -106,11 +106,14 @@ export async function createMapController(container) {
     zoomControl: true,
     gestureHandling: 'greedy',
   })
+  map.addListener('dragend', () => {
+    overlays.zoomHold = true
+  })
 
   const geocoder = new maps.Geocoder()
 
   // Drawn on top of the satellite image: roof faces, panels, a face being traced.
-  const overlays = { faces: [], panels: [], obstacles: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null }
+  const overlays = { faces: [], panels: [], obstacles: [], handles: [], tracePoints: [], traceLine: null, traceMarkers: [], traceListener: null, zoomHold: false }
   const clearList = (list) => {
     list.forEach((o) => o.setMap(null))
     list.length = 0
@@ -213,15 +216,14 @@ export async function createMapController(container) {
 
     /**
      * faces: roof faces; opts: { selectedId, dim, onSelect(id), editableId, onEdit(id, vertices) }.
-     * The editable face gets corner handles (drag a corner, drag a mid-point to add one,
-     * right-click a corner to delete it).
+     * The editable face gets corner handles (drag a corner, drag a mid-point to add one).
      */
     showRoofFaces(faces, opts = {}) {
       clearList(overlays.faces)
       for (const face of faces ?? []) {
         if (!face.vertices || face.vertices.length < 3) continue
         const selected = face.id === opts.selectedId
-        const editable = Boolean(opts.onEdit) && face.id === opts.editableId && !overlays.traceListener
+        const editable = Boolean(opts.onEdit) && face.id === opts.editableId && !overlays.traceListener && !opts.handlesInstead
         const lowConfidence = face.outlineConfidence === 'low' && !face.outlineEdited
         const polygon = new maps.Polygon({
           map,
@@ -274,7 +276,7 @@ export async function createMapController(container) {
           strokeOpacity: 0.7,
           strokeWeight: 1,
           fillColor: '#9ec5ff',
-          fillOpacity: 0.08,
+          fillOpacity: 0.2,
           zIndex: 4,
         })
         g.setValues({ ssdKind: 'ghost', ssdId: ghost.id })
@@ -295,13 +297,24 @@ export async function createMapController(container) {
           zIndex: 5,
         })
         poly.setValues({ ssdKind: 'panel', ssdId: panel.id })
-        if (opts.onPanelClick) poly.addListener('click', () => opts.onPanelClick(panel.id))
+        // A real drag also fires a click on some browsers. Ignore that click so
+        // a move is not immediately undone as a remove.
+        let dragged = false
         if (opts.onPanelDrag) {
+          poly.addListener('drag', () => {
+            dragged = true
+          })
           poly.addListener('dragend', () => {
             const pts = poly.getPath().getArray()
             const lat = pts.reduce((t, p) => t + p.lat(), 0) / pts.length
             const lng = pts.reduce((t, p) => t + p.lng(), 0) / pts.length
             opts.onPanelDrag(panel.id, { lat, lng })
+          })
+        }
+        if (opts.onPanelClick) {
+          poly.addListener('click', () => {
+            if (dragged) return
+            opts.onPanelClick(panel.id)
           })
         }
         overlays.panels.push(poly)
@@ -395,6 +408,77 @@ export async function createMapController(container) {
       clearList(overlays.faces)
       clearList(overlays.panels)
       clearList(overlays.obstacles)
+      clearList(overlays.handles)
+    },
+
+    /**
+     * Corner handles. The drawn ring is small and translucent. The marker image
+     * is larger and transparent so a finger still has a target. Dragging a
+     * corner moves it. A smaller ring in the middle of an edge inserts a corner.
+     */
+    showCornerHandles(points, { onChange } = {}) {
+      clearList(overlays.handles)
+      if (!points || points.length < 3 || !onChange) return
+      const commit = (next) => {
+        if (next.length >= 3) onChange(next.map((p) => ({ lat: p.lat, lng: p.lng })))
+      }
+      const iconFor = (kind) => {
+        const hit = kind === 'insert' ? 36 : 44
+        const ring = kind === 'insert' ? 3.5 : 5
+        const colour = kind === 'insert' ? '#f5a623' : '#ffffff'
+        const stroke = kind === 'insert' ? '#f5a623' : '#0f6b4a'
+        const fillOpacity = kind === 'insert' ? 0.35 : 0.45
+        const c = hit / 2
+        const svg =
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${hit}" height="${hit}" viewBox="0 0 ${hit} ${hit}">` +
+          `<circle cx="${c}" cy="${c}" r="${ring}" fill="${colour}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-opacity="0.8" stroke-width="1.25"/>` +
+          `</svg>`
+        return {
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+          scaledSize: new maps.Size(hit, hit),
+          anchor: new maps.Point(c, c),
+        }
+      }
+      points.forEach((p, index) => {
+        const marker = new maps.Marker({
+          map,
+          position: p,
+          draggable: true,
+          zIndex: 30,
+          title: 'Drag this corner. Zooming does not make the aerial photo sharper.',
+          icon: iconFor('corner'),
+        })
+        marker.addListener('dragend', () => {
+          const ll = marker.getPosition()
+          const next = points.map((pt, i) => (i === index ? { lat: ll.lat(), lng: ll.lng() } : pt))
+          commit(next)
+        })
+        overlays.handles.push(marker)
+      })
+      points.forEach((p, index) => {
+        const q = points[(index + 1) % points.length]
+        const mid = { lat: (p.lat + q.lat) / 2, lng: (p.lng + q.lng) / 2 }
+        const marker = new maps.Marker({
+          map,
+          position: mid,
+          draggable: true,
+          zIndex: 29,
+          title: 'Drag to add a corner',
+          icon: iconFor('insert'),
+        })
+        marker.addListener('dragend', () => {
+          const ll = marker.getPosition()
+          const next = [...points]
+          next.splice(index + 1, 0, { lat: ll.lat(), lng: ll.lng() })
+          commit(next)
+        })
+        overlays.handles.push(marker)
+      })
+    },
+
+    /** While an outline is being edited, automatic fit-to-roof must not pull the zoom back. */
+    holdZoom(hold) {
+      overlays.zoomHold = Boolean(hold)
     },
 
     /** Centre on a point without changing zoom (used when the map is locked). */
@@ -404,8 +488,33 @@ export async function createMapController(container) {
       if (zoom) map.setZoom(zoom)
     },
 
+    /**
+     * Zoom to the closest the map allows on one face (level 21).
+     * This does not increase the sharpness of the aerial photo.
+     */
+    focusFace(face) {
+      const points = face?.vertices ?? []
+      if (points.length < 3) return
+      const bounds = new maps.LatLngBounds()
+      points.forEach((point) => bounds.extend(point))
+      overlays.zoomHold = true
+      map.fitBounds(bounds, 24)
+      maps.event.addListenerOnce(map, 'idle', () => {
+        map.setZoom(21)
+      })
+    },
+
+    /** One step closer or further. Never past the closest zoom the map allows. */
+    zoomBy(delta) {
+      const next = Math.min(21, Math.max(1, (map.getZoom() ?? 20) + delta))
+      overlays.zoomHold = true
+      map.setZoom(next)
+      return next
+    },
+
     /** Zoom the map so every roof face fills the view (max zoom 21). */
-    fitToFaces(faces) {
+    fitToFaces(faces, { force = false } = {}) {
+      if (overlays.zoomHold && !force) return
       const points = (faces ?? []).flatMap((face) => face.vertices ?? [])
       if (points.length < 3) return
       const bounds = new maps.LatLngBounds()
@@ -413,6 +522,7 @@ export async function createMapController(container) {
       map.fitBounds(bounds, 40)
       maps.event.addListenerOnce(map, 'idle', () => {
         if (map.getZoom() > 21) map.setZoom(21)
+        if (force) overlays.zoomHold = true
       })
     },
   }

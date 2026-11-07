@@ -1,10 +1,54 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
-import { editedOutline, editedPitch, faceOverlaps, manualFace, roofTotals, splitFace } from '../../lib/roofFaces'
+import { FLAT_ROOF_MAX_PITCH_DEG, TILT_FRAME_DEG } from '../../config/designerConfig'
+import { no3dRoofNote } from '../../lib/buildingMatch'
+import {
+  editedAzimuth,
+  editedInstall,
+  editedOutline,
+  editedPitch,
+  resetAzimuth,
+  wrapAzimuth,
+  faceOverlaps,
+  installTypeOf,
+  isFlatPitch,
+  manualFace,
+  mountSummary,
+  roofTotals,
+  splitFace,
+} from '../../lib/roofFaces'
 
-function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onResetOutline, onSplit }) {
+function FaceCard({
+  face,
+  faces,
+  selected,
+  onSelect,
+  onToggle,
+  onUpdate,
+  onUpdateLive,
+  onRemove,
+  onResetOutline,
+  onSplit,
+  outlineEditing,
+  onOutlineEdit,
+  onFocusFace,
+  canUndoOutline,
+  onUndoOutline,
+}) {
   return (
-    <div className={`roof-face-card ${selected ? 'selected' : ''} ${face.included ? 'included' : ''}`} onClick={onSelect}>
+    <div
+      id={`roof-face-${face.id}`}
+      className={`roof-face-card ${selected ? 'selected' : ''} ${face.included ? 'included' : ''}`}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      tabIndex={0}
+      aria-label={`${face.label}, ${face.orientation}, ${face.azimuthDegrees} degrees`}
+    >
       <div className="face-row">
         <label className="face-toggle" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={face.included} onChange={onToggle} aria-label={`Use ${face.label}`} />
@@ -43,6 +87,7 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
             </span>
           )}
           {face.otherRoof && <small className="non-roof-why">Left out: {face.otherRoofReason}.</small>}
+          {face.dsmRejectNote && <small className="non-roof-why">{face.dsmRejectNote}</small>}
           {face.nonRoofLikely && (
             <span className="outline-badge low non-roof" title={(face.nonRoofReasons ?? []).join('; ')}>
               Possibly verandah/not roof
@@ -53,55 +98,72 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
               Left out: {(face.nonRoofReasons ?? []).join(', ')}. Tick it if it really is roof you want panels on.
             </small>
           )}
-          {selected && <small>Drag the white corner dots on the map to match the roof edges.</small>}
         </div>
       )}
-      {selected && face.source === 'solar-api' && (
-        <div className="face-edit" onClick={(e) => e.stopPropagation()}>
-          <label>
-            Pitch °
-            <input
-              type="number"
-              min="0"
-              max="60"
-              value={face.pitchDegrees}
-              onChange={(e) => onUpdate(editedPitch(face, e.target.value), true)}
-            />
-          </label>
-          {face.outlineEdited && face.originalVertices && (
-            <button type="button" className="link-button" onClick={onResetOutline}>
-              Reset outline
+      <p className="mount-summary">{mountSummary(face)}</p>
+      <p className="mount-summary azimuth-line">
+        Roof faces {face.orientation} ({wrapAzimuth(face.azimuthDegrees)}°). 0° is north and 90° is east, clockwise.
+        {face.azimuthEdited ? ' You set this direction.' : ' Detected direction.'}
+      </p>
+      {selected && <details className="adjust-design" onClick={(e) => e.stopPropagation()}>
+        <summary>Adjust design</summary>
+        <FaceMount face={face} onUpdate={onUpdateLive ?? onUpdate} />
+        <AzimuthEditor face={face} faces={faces} onUpdate={onUpdateLive ?? onUpdate} />
+        <div className="two-column-buttons">
+          {outlineEditing ? (
+            <button type="button" className="primary-button" onClick={() => onOutlineEdit(null)}>
+              Done editing outline
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                onOutlineEdit(face.id)
+                onFocusFace?.(face)
+              }}
+            >
+              Edit outline
             </button>
           )}
-          {!face.outlineEdited && face.outlineShape === 'dsm' && face.estimateVertices && (
-            <button type="button" className="link-button" onClick={() => onUpdate(estimateOutline(face), true)}>
-              Use Google's estimate instead
-            </button>
-          )}
+          <button type="button" className="secondary-button" onClick={onUndoOutline} disabled={!canUndoOutline}>
+            Undo last corner
+          </button>
         </div>
-      )}
-      {selected && onSplit && (
-        <div className="face-edit" onClick={(e) => e.stopPropagation()}>
+        {outlineEditing && (
+          <small className="hint">
+            Zoomed as close as the map allows. That does not make the aerial photo sharper. Drag the large white dots
+            to move corners, or an orange dot to add one. Drag the map background to pan.
+          </small>
+        )}
+        {selected && face.source === 'solar-api' && (
+          <small>Use Edit outline for the corner dots. Undo puts back the last corner change.</small>
+        )}
+        {selected && face.source === 'solar-api' && (face.originalVertices || face.estimateVertices) && (
+          <div className="face-edit" onClick={(e) => e.stopPropagation()}>
+            {face.outlineEdited && face.originalVertices && (
+              <button type="button" className="link-button" onClick={onResetOutline}>
+                Reset outline
+              </button>
+            )}
+            {!face.outlineEdited && face.outlineShape === 'dsm' && face.estimateVertices && (
+              <button type="button" className="link-button" onClick={() => onUpdate(estimateOutline(face), true)}>
+                Use Google's estimate instead
+              </button>
+            )}
+          </div>
+        )}
+        {selected && onSplit && (
           <button type="button" className="link-button split-face" onClick={onSplit}>
             Split along a ridge
           </button>
-        </div>
-      )}
-      {face.source === 'manual' && selected && (
-        <div className="face-edit" onClick={(e) => e.stopPropagation()}>
+        )}
+        {!selected && <small>Select this face to drag its corners or split it along a ridge.</small>}
+        {face.source === 'manual' && selected && (
+        <div className="face-edit face-edit-azimuth" onClick={(e) => e.stopPropagation()}>
           <label>
-            Pitch °
-            <input
-              type="number"
-              min="0"
-              max="60"
-              value={face.pitchDegrees}
-              onChange={(e) => onUpdate({ pitchDegrees: Number(e.target.value) })}
-            />
-          </label>
-          <label>
-            Faces
-            <select value={face.azimuthDegrees} onChange={(e) => onUpdate({ azimuthDegrees: Number(e.target.value) })}>
+            Direction
+            <select value={wrapAzimuth(face.azimuthDegrees)} onChange={(e) => (onUpdateLive ?? onUpdate)(editedAzimuth(face, e.target.value), true)}>
               {[
                 ['North', 0],
                 ['North-east', 45],
@@ -128,17 +190,88 @@ function FaceCard({ face, selected, onSelect, onToggle, onUpdate, onRemove, onRe
             Remove
           </button>
         </div>
+        )}
+      </details>}
+    </div>
+  )
+}
+
+export function AzimuthEditor({ face, faces, onUpdate, besideDrawing = false }) {
+  const others = (faces ?? []).filter((f) => f.id !== face.id)
+  return (
+    <div className="azimuth-editor">
+      <label>
+        Roof direction °
+        <input
+          type="number"
+          min="0"
+          max="359.9"
+          step="1"
+          aria-label={`Direction of ${face.label} in degrees, 0 is north`}
+          value={wrapAzimuth(face.azimuthDegrees)}
+          onChange={(e) => onUpdate(editedAzimuth(face, e.target.value), true)}
+        />
+      </label>
+      <small className="hint">
+        0° north, 90° east, clockwise. This is the way the roof slopes, which is the way flush panels face.{' '}
+        {besideDrawing
+          ? 'The drawing angle below turns the rectangles on the roof and does not change this direction.'
+          : 'It does not spin the panels flat on the roof. That control is on the Panels step.'}
+      </small>
+      <div className="two-column-buttons">
+        <button type="button" className="secondary-button" onClick={() => onUpdate(resetAzimuth(face), true)} disabled={!face.azimuthEdited}>
+          Reset to detected
+        </button>
+      </div>
+      {others.length > 0 && (
+        <label className="match-face">
+          Match a face
+          <select
+            aria-label={`Match the direction of ${face.label} to another face`}
+            defaultValue=""
+            onChange={(e) => {
+              const other = others.find((f) => f.id === e.target.value)
+              if (other) onUpdate(editedAzimuth(face, other.azimuthDegrees), true)
+              e.target.value = ''
+            }}
+          >
+            <option value="">Match a face</option>
+            {others.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}, {wrapAzimuth(f.azimuthDegrees)}°
+              </option>
+            ))}
+          </select>
+        </label>
       )}
     </div>
   )
 }
 
-export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }) {
+export default function RoofStep({
+  map,
+  onGoToProperty,
+  onGoToPanels,
+  onRedraw,
+  outlineEditId = null,
+  onOutlineEdit,
+  onFocusFace,
+  canUndoOutline = false,
+  onUndoOutline,
+}) {
   const { building, designChoices, actions } = useProject()
   const [tracePoints, setTracePoints] = useState(null) // null = not tracing
   const [traceKind, setTraceKind] = useState('face') // 'face' | 'obstacle' | 'split'
   const [splitError, setSplitError] = useState('')
+  const [toolsOpen, setToolsOpen] = useState(false)
   const faces = building.roofFaces
+  const selectedId = building.selectedRoofFaceId
+  const scrolled = useRef(null)
+  useEffect(() => {
+    if (!selectedId || scrolled.current === selectedId) return
+    scrolled.current = selectedId
+    document.getElementById(`roof-face-${selectedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedId])
   const obstacles = designChoices?.obstacles ?? []
   const overlaps = faceOverlaps(faces)
   const confirmed = Boolean(building.roofModelAccepted)
@@ -164,6 +297,7 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
     setTraceKind(kind)
     setTracePoints([])
     setSplitError('')
+    setToolsOpen(true)
     const color = kind === 'obstacle' ? '#ff4d4f' : kind === 'split' ? '#ffffff' : '#20a97c'
     map.startTracing(
       (pts) => {
@@ -226,14 +360,14 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
       {solar.status === 'Connecting' && <div className="info-box">Loading your roof from Google…</div>}
       {solar.status === 'Unavailable' && (
         <div className="info-box error">
-          Google has no roof data for this house. Trace your roof faces on the map instead.
+          {solar.response?.message || 'Google has no roof data for this house.'} Trace your roof on the map with "+ Trace
+          a roof face".
         </div>
       )}
       {solar.status === 'Connected' && faces.length > 0 && !confirmed && (
         <div className="info-box">
-          We found {faces.length} roof face{faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check
-          each outline: click a face and drag its corner dots onto the roof edges (drag a middle dot to add a corner,
-          right-click a corner to delete it). Orange outlines are rough guesses.
+          {no3dRoofNote(faces) ||
+            `We found ${faces.length} roof face${faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check each outline: click a face and drag its corner dots onto the roof edges (drag an edge dot to add a corner). Orange outlines are rough guesses.`}
         </div>
       )}
 
@@ -261,7 +395,17 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             selected={face.id === building.selectedRoofFaceId}
             onSelect={() => actions.selectRoofFace(face.id)}
             onToggle={() => actions.toggleRoofFace(face.id)}
+            faces={faces}
             onUpdate={(changes) => recalc(face, changes)}
+            onUpdateLive={(changes, direct) => {
+              if (direct) actions.updateRoofFaceLive(face.id, changes)
+              else recalc(face, changes)
+            }}
+            outlineEditing={outlineEditId === face.id}
+            onOutlineEdit={onOutlineEdit}
+            onFocusFace={onFocusFace}
+            canUndoOutline={outlineEditId === face.id && canUndoOutline}
+            onUndoOutline={onUndoOutline}
             onRemove={() => actions.removeRoofFace(face.id)}
             onSplit={tracePoints === null && map ? () => startTrace('split') : undefined}
             onResetOutline={() =>
@@ -280,71 +424,77 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
         </div>
       ))}
 
-      <div className="obstacle-list">
-        <strong>No-go areas</strong>
-        <small className="hint">Vents, skylights, aircon units, flues - panels stay 30 cm clear of them.</small>
-        {obstacles.map((ob, i) => (
-          <div key={ob.id} className="face-row">
-            <span>No-go area {i + 1}</span>
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => actions.updateDesign({ obstacles: obstacles.filter((o) => o.id !== ob.id) })}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
-
       {splitError && <div className="info-box error">{splitError}</div>}
-      {tracePoints === null ? (
-        <div className="two-column-buttons">
-          <button type="button" className="secondary-button" onClick={() => startTrace('face')} disabled={!map}>
-            + Trace a roof face
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            id="add-no-go"
-            onClick={() => startTrace('obstacle')}
-            disabled={!map}
-          >
-            + Mark a no-go area
-          </button>
+      <details
+        className="adjust-design"
+        open={toolsOpen || tracePoints !== null}
+        onToggle={(e) => setToolsOpen(e.currentTarget.open)}
+      >
+        <summary>Adjust design</summary>
+        <div className="obstacle-list">
+          <strong>No-go areas</strong>
+          <small className="hint">Vents, skylights, aircon units, flues — panels stay 30 cm clear of them.</small>
+          {obstacles.map((ob, i) => (
+            <div key={ob.id} className="face-row">
+              <span>No-go area {i + 1}</span>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => actions.updateDesign({ obstacles: obstacles.filter((o) => o.id !== ob.id) })}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
-      ) : (
-        <div className="trace-box">
-          <strong>
-            {traceKind === 'obstacle'
-              ? 'Click each corner of the vent, skylight or unit on the map'
-              : traceKind === 'split'
-                ? 'Split: click two points along the ridge line on the map'
-                : 'Tracing: click each corner of the roof face on the map'}
-          </strong>
-          <small>
-            {traceKind === 'split'
-              ? `${tracePoints.length} of 2 points`
-              : `${tracePoints.length} corner${tracePoints.length === 1 ? '' : 's'} so far (at least 3)`}
-          </small>
-          <div className="three-column-buttons">
-            <button type="button" className="secondary-button" onClick={() => setTracePoints(map.undoTracePoint())}>
-              Undo
-            </button>
-            <button type="button" className="secondary-button" onClick={cancelTrace}>
-              Cancel
+        {tracePoints === null ? (
+          <div className="two-column-buttons">
+            <button type="button" className="secondary-button" onClick={() => startTrace('face')} disabled={!map}>
+              + Trace a roof face
             </button>
             <button
               type="button"
-              className="primary-button"
-              onClick={finishTrace}
-              disabled={traceKind === 'split' || tracePoints.length < 3}
+              className="secondary-button"
+              id="add-no-go"
+              onClick={() => startTrace('obstacle')}
+              disabled={!map}
             >
-              Finish
+              + Mark a no-go area
             </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="trace-box">
+            <strong>
+              {traceKind === 'obstacle'
+                ? 'Click each corner of the vent, skylight or unit on the map'
+                : traceKind === 'split'
+                  ? 'Split: click two points along the ridge line on the map'
+                  : 'Tracing: click each corner of the roof face on the map'}
+            </strong>
+            <small>
+              {traceKind === 'split'
+                ? `${tracePoints.length} of 2 points`
+                : `${tracePoints.length} corner${tracePoints.length === 1 ? '' : 's'} so far (at least 3)`}
+            </small>
+            <div className="three-column-buttons">
+              <button type="button" className="secondary-button" onClick={() => setTracePoints(map.undoTracePoint())}>
+                Undo
+              </button>
+              <button type="button" className="secondary-button" onClick={cancelTrace}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={finishTrace}
+                disabled={traceKind === 'split' || tracePoints.length < 3}
+              >
+                Finish
+              </button>
+            </div>
+          </div>
+        )}
+      </details>
 
       {tracePoints === null &&
         (confirmed ? (
@@ -368,6 +518,74 @@ export default function RoofStep({ map, onGoToProperty, onGoToPanels, onRedraw }
             Confirm roof
           </button>
         ))}
+    </div>
+  )
+}
+
+export function FaceMount({ face, onUpdate }) {
+  const install = installTypeOf(face)
+  const setPitch = (value) => onUpdate(editedPitch(face, value), true)
+  const setInstall = (kind) => onUpdate(editedInstall(face, kind), true)
+  return (
+    <div className="face-mount" onClick={(e) => e.stopPropagation()}>
+      <div className="pitch-row">
+        <label>
+          Pitch °
+          <span className="count-row">
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label={`Lower the pitch of ${face.label}`}
+              onClick={() => setPitch((Number(face.pitchDegrees) || 0) - 1)}
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min="0"
+              max="60"
+              step="0.5"
+              value={face.pitchDegrees}
+              aria-label={`Pitch of ${face.label} in degrees`}
+              onChange={(e) => setPitch(e.target.value)}
+            />
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label={`Raise the pitch of ${face.label}`}
+              onClick={() => setPitch((Number(face.pitchDegrees) || 0) + 1)}
+            >
+              +
+            </button>
+          </span>
+        </label>
+        {isFlatPitch(face.pitchDegrees) && (
+          <span className="outline-badge low" title={`Under ${FLAT_ROOF_MAX_PITCH_DEG}° is a flat roof`}>
+            Flat roof
+          </span>
+        )}
+      </div>
+      <div className="two-column-buttons" role="group" aria-label={`How panels sit on ${face.label}`}>
+        <button
+          type="button"
+          className={install === 'flush' ? 'primary-button' : 'secondary-button'}
+          aria-pressed={install === 'flush'}
+          onClick={() => setInstall('flush')}
+        >
+          Flush
+        </button>
+        <button
+          type="button"
+          className={install === 'tilt' ? 'primary-button' : 'secondary-button'}
+          aria-pressed={install === 'tilt'}
+          onClick={() => setInstall('tilt')}
+        >
+          Tilt frames
+        </button>
+      </div>
+      <small className="hint">
+        Flush means the panel tilt is the roof pitch. Tilt frames are drawn at {TILT_FRAME_DEG}° facing north. That is not a structural design.
+      </small>
     </div>
   )
 }

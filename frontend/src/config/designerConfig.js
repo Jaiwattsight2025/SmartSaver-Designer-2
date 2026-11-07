@@ -4,7 +4,7 @@
  * Every number the Designer uses that does NOT come from the customer's bill
  * or Google's roof data lives here.
  *   [ASSUMPTION]  engineering / industry rule of thumb - reasonable, but review.
- * Prices live in pricing.js (all [PLACEHOLDER]).
+ * Installed-price benchmarks live in src/lib/priceBenchmarks.js. pricing.js is shop links only.
  *
  * Values marked "same as Wattsight" are copied from
  * Wattsight\platform\config\assumptions.py so both tools give the same answer.
@@ -62,15 +62,35 @@ export const MODULE_DIMENSIONS_BY_WATTS = {
 }
 export const PANEL_GAP_M = 0.02 // [ASSUMPTION] clamp gap between panels in a row
 export const ROW_GAP_M = 0.02 // [ASSUMPTION] gap between rows (flush-mounted)
-export const ROOF_EDGE_SETBACK_M = 0.4 // [ASSUMPTION] keep panels this far inside every roof edge
+// Planning inset from the drawn roof edge. Not a building-code clearance and not an installation approval.
+export const ROOF_EDGE_SETBACK_M = 0.2
+export const SETBACK_M_MIN = 0.2
+export const SETBACK_M_MAX = 1.5
+
+/**
+ * A stored number is the customer's choice and is kept, including 0.4 from an older session.
+ * Null, or a value outside the field, uses the current planning default.
+ */
+export function resolveSetbackM(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < SETBACK_M_MIN || n > SETBACK_M_MAX) return ROOF_EDGE_SETBACK_M
+  return n
+}
 export const OBSTACLE_CLEARANCE_M = 0.3 // [ASSUMPTION] keep panels this far from vents, skylights, etc.
 export const DEFAULT_PANEL_ORIENTATION = 'portrait' // long side up the roof
 export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the nearest grid spot within this distance
-export const MIN_PANELS_PER_FACE = 4 // [ASSUMPTION] auto-fill never leaves fewer than this on a face (no odd singles)
-export const MIN_PANELS_PER_FACE_SMALL = 2 // ...or this for a tiny system
-export const SMALL_SYSTEM_PANELS = 8 // a target of this many panels or fewer counts as tiny
+// A map drag shorter than this is a shaky click (remove), not a move. Just past
+// half a module width: the next slot's centre is ~1.15 m away, so a real move
+// has to pass the halfway line and this distance.
+export const PANEL_CLICK_SLOP_M = 0.6
+export const MIN_PANELS_PER_FACE = 1 // placement floor: 1–3 panels are allowed for planning
+export const SMALL_GROUP_WARN_PANELS = 4 // warning only: small groups are harder to wire. Not a placement ban.
+export const MIN_PANELS_PER_FACE_SMALL = 1
+export const SMALL_SYSTEM_PANELS = 8
+export const PLANNING_KW_MIN = 1
+export const PLANNING_KW_MAX = 100 // adjustable planning size, not a network determination
 export const MIN_FACE_AREA_M2 = 4 // faces smaller than this are not worth a panel row
-export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] same as Wattsight (check DNSP)
+export const MAX_RESIDENTIAL_KW = 13.2 // [ASSUMPTION] default planning size, not a statement of what the network allows
 
 // Inverter & battery
 export const INVERTER_SIZES_KW = [3, 5, 6, 8, 10, 15] // [ASSUMPTION] common single/three-phase sizes
@@ -84,7 +104,7 @@ export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 // Flat roofs (D2.3): panels go on tilt frames facing north instead of flush.
 export const FLAT_ROOF_MAX_PITCH_DEG = 5 // [ASSUMPTION] below this a roof is treated as flat
 export const TILT_FRAME_DEG = 10 // [ASSUMPTION] common low-profile tilt frame
-export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] mid-winter noon sun height around Melbourne/Sydney, for row spacing
+export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] used only when the design has no latitude. Melbourne is about 29°, Sydney about 33°.
 
 /**
  * Main-roof filter (lib/mainRoof.js) [ASSUMPTION - tuned on 7 public test roofs]:
@@ -92,8 +112,10 @@ export const WINTER_NOON_SUN_DEG = 29 // [ASSUMPTION] mid-winter noon sun height
  * MIN_EDGE_M: shortest shared edge that joins two faces; WALL_EDGE_M: shortest wall that can join
  * another storey; HOUSE_MAX_M2: above this plan area a wall step is treated as a boundary to next
  * door; SEED_MAX_M: the locked point must be within this of a face for the filter to run.
+ * CONNECT_GAP_M: outlines closer than this (a shared edge, or a thin tracing gap)
+ * are the same roof even when the 3D model did not record a join.
  */
-export const MAIN_ROOF = { STEP_M: 1.0, MIN_EDGE_M: 1.0, WALL_EDGE_M: 2.0, HOUSE_MAX_M2: 1000, SEED_MAX_M: 8 }
+export const MAIN_ROOF = { STEP_M: 1.0, MIN_EDGE_M: 1.0, WALL_EDGE_M: 2.0, HOUSE_MAX_M2: 1000, SEED_MAX_M: 8, CONNECT_GAP_M: 0.6 }
 
 /** Panel blocks (chooseBlock): blocks up to this long-to-short ratio count as compact. */
 export const BLOCK_MAX_ASPECT = 2

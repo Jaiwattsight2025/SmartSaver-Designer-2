@@ -4,6 +4,8 @@ import { computeDesign } from '../lib/design'
 import { stateFromPostcode } from '../lib/energyProfile'
 import { suggestedBatteryKwh, suggestedPanelCount } from '../lib/energyModel'
 import { STATES } from '../config/designerConfig'
+import { placementMaxKw, resolvePlacementCount } from '../lib/panelLayout'
+import { resolveSetbackM } from '../config/designerConfig'
 
 /** "11 Example St, Suburb VIC 3147, Australia" -> { state, postcode } (kept in memory only). */
 export function locationFromAddress(address) {
@@ -25,7 +27,11 @@ export function useDesign() {
     const suggestedBattery = suggestedBatteryKwh(profile)
     const pv = {
       moduleWatts: designChoices.moduleWatts,
-      panelCount: designChoices.panelCount ?? suggestedPanels,
+      panelCount: resolvePlacementCount({
+        panelCount: designChoices.panelCount,
+        moduleWatts: designChoices.moduleWatts,
+        planningKw: designChoices.planningKw,
+      }),
     }
     const battery = {
       batteryKwh: designChoices.batteryKwh ?? suggestedBattery,
@@ -35,11 +41,18 @@ export function useDesign() {
     const roofConfirmed = Boolean(building.roofModelAccepted)
     const layoutOptions = {
       orientation: designChoices.panelOrientation,
-      setbackM: designChoices.setbackM,
+      setbackM: resolveSetbackM(designChoices.setbackM),
       rowGapM: designChoices.rowGapM,
       removedPanelIds: designChoices.removedPanelIds ?? [],
       pinnedPanelIds: designChoices.pinnedPanelIds ?? [],
       obstacles: designChoices.obstacles ?? [],
+      latitude: building.location?.lat ?? insights?.center?.latitude ?? insights?.center?.lat ?? null,
+      maxKw: placementMaxKw({
+        panelCount: designChoices.panelCount,
+        moduleWatts: designChoices.moduleWatts,
+        planningKw: designChoices.planningKw,
+      }),
+      faceArrays: designChoices.faceArrays ?? {},
     }
     const design = computeDesign({
       profile,
@@ -49,6 +62,7 @@ export function useDesign() {
       battery,
       state,
       layoutOptions,
+      installerQuoteAud: designChoices.installerQuoteAud,
     })
     return {
       profile,
@@ -62,5 +76,5 @@ export function useDesign() {
       insights,
       roofConfirmed,
     }
-  }, [profile, insights, building.roofFaces, building.roofModelAccepted, building.formattedAddress, designChoices])
+  }, [profile, insights, building.roofFaces, building.roofModelAccepted, building.formattedAddress, building.location, designChoices])
 }

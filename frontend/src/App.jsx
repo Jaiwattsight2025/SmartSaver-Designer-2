@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { snapToCell } from './lib/panelLayout'
+import { nextPanelAdd, resolvePanelDrag } from './lib/panelLayout'
 import { editedOutline } from './lib/roofFaces'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
@@ -13,13 +13,18 @@ import { getBuildingInsights, summariseBuildingInsights } from './services/solar
 import { useProject } from './context/ProjectContext'
 import { useDesign } from './hooks/useDesign'
 import { facesFromBuildingInsights } from './lib/roofFaces'
-import { toLocal } from './lib/geo'
 import { buildingMatchWarning, noCoverageMessage } from './lib/buildingMatch'
 import { flagNonRoofFaces } from './lib/nonRoof'
 import { markOtherRoofs } from './lib/mainRoof'
 import { refineFacesWithDsm, traceFacesFromLayers } from './lib/dsmFaces'
 import { getRoofLayers } from './services/dataLayers'
 import { fmtKw, fmtKwh, fmtMoney } from './lib/format'
+import { buildDesignSnapshot } from './lib/designSnapshot'
+import { consumeHandoffToken, redeemDesignerHandoff } from './lib/designerHandoff'
+import { SYNTHETIC_BANNER } from './lib/syntheticFixture'
+
+const syntheticPreview =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === 'synthetic'
 
 const steps = [
   { id: 'property', number: 1, label: 'Property', summary: 'Your bill and address' },
@@ -66,7 +71,7 @@ const cards = {
 const MAP_STEPS = ['property', 'roof', 'panels', 'battery']
 
 function App() {
-  const [activeStep, setActiveStep] = useState('property')
+  const [activeStep, setActiveStep] = useState(syntheticPreview ? 'roof' : 'property')
   const [addressInput, setAddressInput] = useState('')
   const [status, setStatus] = useState({ label: 'Loading map', tone: 'neutral' })
   const [mapMessage, setMapMessage] = useState('Enter a property address.')
@@ -75,19 +80,62 @@ function App() {
   const lockSeq = useRef(0)
 
   const { building, energyProfile, actions, project } = useProject()
-  const { design } = useDesign()
-  const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, solar, roofFaces, selectedRoofFaceId } =
+  const { design, state: designState } = useDesign()
+  const { formattedAddress, location: coordinates, mapType, propertyFound, mapLocked, roofFaces, selectedRoofFaceId } =
     building
 
   const activeIndex = useMemo(() => steps.findIndex((step) => step.id === activeStep), [activeStep])
   const activeCard = cards[activeStep]
 
   // Panel edit mode (step 3): click a panel to remove it, click a blue ghost to add one, drag to move.
-  const [panelEdit, setPanelEdit] = useState(false)
+  const [mapMode, setMapMode] = useState('move')
+  const panelEdit = mapMode === 'panels'
+  const [outlineEditId, setOutlineEditId] = useState(null)
+  const outlineUndo = useRef(null)
+  const [canUndoOutline, setCanUndoOutline] = useState(false)
   // Bumped when a trace is cancelled/finished so the map redraws clickable shapes.
   const [mapTick, setMapTick] = useState(0)
   const designChoices = project.design
   const roofConfirmed = Boolean(building.roofModelAccepted)
+  const snapKey = useRef('')
+
+  useEffect(() => {
+    const token = consumeHandoffToken()
+    if (!token) return undefined
+    let cancelled = false
+    redeemDesignerHandoff(token)
+      .then((result) => {
+        if (!cancelled) actions.applyHandoffSuccess(result)
+      })
+      .catch((error) => {
+        if (!cancelled) actions.applyHandoffError(error?.message || 'Energy Insights could not be reached. Enter your bill numbers.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [actions])
+
+  useEffect(() => {
+    if (!roofConfirmed) {
+      if (snapKey.current) {
+        snapKey.current = ''
+        actions.setDesignSnapshot(null)
+      }
+      return
+    }
+    const snap = buildDesignSnapshot({
+      roofFaces,
+      design,
+      latitude: coordinates?.lat ?? null,
+      state: designState,
+      confirmed: true,
+      faceArrays: designChoices.faceArrays ?? {},
+    })
+    const key = JSON.stringify(snap)
+    if (key === snapKey.current) return
+    snapKey.current = key
+    actions.setDesignSnapshot(snap)
+  }, [roofConfirmed, roofFaces, design, coordinates, designState, designChoices.faceArrays, actions])
 
   const editPanels = useMemo(() => {
     const layout = design.layout
@@ -105,24 +153,29 @@ function App() {
       },
       add(id) {
         if (placed.includes(id)) return
-        actions.updateDesign({
-          removedPanelIds: removedIds.filter((x) => x !== id),
-          pinnedPanelIds: [...pinnedIds.filter((x) => x !== id), id],
-          panelCount: layout.count + 1,
+        const cell = [...layout.candidates, ...(layout.removedCells ?? [])].find((c) => c.id === id)
+        const decision = nextPanelAdd({
+          placedIds: placed,
+          cell,
+          panels: layout.panels,
+          panelCount: layout.panels.length,
+          faceArrays: designChoices.faceArrays,
+          removedIds,
+          obstacles: designChoices.obstacles,
         })
+        actions.updateDesign(decision.patch)
       },
       drag(id, latLng) {
-        // A click with a little hand jitter turns into a tiny drag on a draggable
-        // polygon (and Google then skips the click): treat it as the click.
+        // A shaky click becomes a short drag and Google then skips the click.
         const orig = layout.panels.find((p) => p.id === id)
-        const moved = orig?.center ? toLocal(orig.center, latLng) : null
-        if (moved && Math.hypot(moved.x, moved.y) < 0.2) {
+        const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
+        const gesture = resolvePanelDrag(orig?.center, latLng, pool, { exclude: placed.filter((x) => x !== id) })
+        if (gesture.type === 'remove') {
           api.remove(id)
           return
         }
-        const pool = [...layout.candidates, ...(layout.removedCells ?? [])]
-        const cell = snapToCell(pool, latLng, { exclude: placed })
-        if (!cell || cell.id === id) {
+        const cell = gesture.cell
+        if (gesture.type !== 'move' || !cell || cell.id === id) {
           setMapTick((t) => t + 1) // snap back
           return
         }
@@ -134,7 +187,7 @@ function App() {
       },
     }
     return api
-  }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, actions])
+  }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, designChoices.faceArrays, designChoices.obstacles, actions])
 
   // Draw roof faces, no-go areas and panels on the map for the current step.
   useEffect(() => {
@@ -142,24 +195,37 @@ function App() {
     if (!map) return
     const showFaces = activeStep !== 'property' || roofFaces.length > 0
     const onRoof = activeStep === 'roof'
+    const onPanels = activeStep === 'panels'
+    const editingOutline = onRoof && outlineEditId
+    if (editingOutline) map.holdZoom?.(true)
     map.showRoofFaces(showFaces ? roofFaces : [], {
-      selectedId: onRoof ? selectedRoofFaceId : null,
-      dim: !onRoof,
-      onSelect: onRoof ? actions.selectRoofFace : undefined,
-      editableId: onRoof ? selectedRoofFaceId : null,
-      onEdit: onRoof
-        ? (id, vertices) => {
-            const face = roofFaces.find((f) => f.id === id)
-            if (face) actions.updateRoofFace(id, editedOutline(face, vertices))
+      selectedId: onRoof || onPanels ? selectedRoofFaceId : null,
+      dim: !onRoof && !onPanels,
+      onSelect: onRoof || onPanels
+        ? (id) => {
+            actions.selectRoofFace(id)
+            if (outlineEditId && id !== outlineEditId) setOutlineEditId(null)
           }
         : undefined,
+      editableId: null,
+      handlesInstead: true,
+    })
+    const editFace = editingOutline ? roofFaces.find((f) => f.id === outlineEditId) : null
+    map.showCornerHandles?.(editFace?.vertices, {
+      onChange: (pts) => {
+        const face = roofFaces.find((f) => f.id === outlineEditId)
+        if (!face) return
+        outlineUndo.current = face.vertices.map((v) => ({ ...v }))
+        setCanUndoOutline(true)
+        actions.updateRoofFace(face.id, editedOutline(face, pts))
+      },
     })
     map.showObstacles(activeStep === 'roof' || activeStep === 'panels' ? designChoices.obstacles ?? [] : [])
     const showPanelsNow = activeStep !== 'property' && activeStep !== 'roof'
     const editing = activeStep === 'panels' && panelEdit
     const layout = design.layout
     map.showPanels(showPanelsNow ? layout.panels : [], {
-      ghosts: editing ? [...layout.candidates.slice(layout.count), ...(layout.removedCells ?? [])] : [],
+      ghosts: onPanels ? layout.candidates.slice(layout.panels.length) : [],
       onPanelClick: editing ? editPanels.remove : undefined,
       onGhostClick: editing ? editPanels.add : undefined,
       onPanelDrag: editing ? editPanels.drag : undefined,
@@ -175,19 +241,24 @@ function App() {
     editPanels,
     mapTick,
     actions,
+    outlineEditId,
   ])
 
   // What the pill on top of the map says on steps 2-4 (step 1 uses mapMessage).
   const stepGuidance = mapLocked
     ? {
-        roof: roofConfirmed
-          ? 'Roof confirmed.'
-          : 'Click a face, then drag its corner dots onto the roof edges. Confirm the roof when it looks right.',
+        roof: mapMode === 'move'
+          ? 'Move map is on. Drag to pan. + and − zoom. Choose Edit outline to move corners.'
+          : roofConfirmed
+            ? 'Roof confirmed.'
+            : 'Click a face, then drag its corner dots onto the roof edges. Confirm the roof when it looks right.',
         panels: !roofConfirmed
           ? 'Confirm the roof in step 2 first.'
-          : panelEdit
-            ? 'Click a panel to remove it, a blue outline to add one, or drag a panel to move it.'
-            : `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
+          : mapMode === 'move'
+            ? 'Move map is on. Drag to pan. + and − zoom. This does not move panels.'
+            : panelEdit
+              ? 'Click a panel to remove it, a blue outline to add one, or drag a panel to move it.'
+              : `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
         battery: `${fmtKw(design.layout.dcKw)} solar${design.batteryKwh > 0 ? ` + ${design.batteryKwh} kWh battery` : ''}`,
       }[activeStep]
     : null
@@ -295,9 +366,11 @@ function App() {
       setStatus({ label: 'Roof loaded', tone: 'success' })
       setMapMessage(`We found ${faces.length} roof faces.${traceNote} Press Next to check them.${matchNote}`)
     } catch (error) {
-      actions.setSolarError(error.details ?? { message: error.message })
+      const message = noCoverageMessage(error)
+      const details = error.details && typeof error.details === 'object' ? error.details : {}
+      actions.setSolarError({ ...details, message })
       setStatus({ label: 'No roof data', tone: 'error' })
-      setMapMessage(`${noCoverageMessage(error)} You can trace your roof yourself in step 2: press Next, then "+ Trace a roof face".`)
+      setMapMessage(`${message} You can trace your roof yourself in step 2: press Next, then "+ Trace a roof face".`)
     }
   }
 
@@ -412,6 +485,7 @@ function App() {
                 <span>DESIGN CONTROLS</span>
                 <strong>{activeCard.title}</strong>
               </div>
+              {syntheticPreview && <div className="info-box synthetic-banner">{SYNTHETIC_BANNER}</div>}
 
               {activeStep === 'property' && (
                 <div className="control-stack">
@@ -472,53 +546,6 @@ function App() {
                       </small>
                     </div>
                   )}
-
-                  <details className="solar-panel">
-                    <summary className="solar-panel-heading">
-                      <span>GOOGLE ROOF DATA</span>
-                      <strong>{solar.status}</strong>
-                    </summary>
-
-                    <div className="solar-metrics">
-                      <div>
-                        <span>HTTP status</span>
-                        <strong>{solar.summary?.httpStatus ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Roof segments</span>
-                        <strong>{solar.summary?.roofSegments ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Whole roof area</span>
-                        <strong>{solar.summary ? `${solar.summary.wholeRoofArea.toFixed(1)} m²` : '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Maximum panels</span>
-                        <strong>{solar.summary?.maximumPanels ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Imagery quality</span>
-                        <strong>{solar.summary?.imageryQuality ?? '—'}</strong>
-                      </div>
-                      <div>
-                        <span>Imagery date</span>
-                        <strong>{solar.summary?.imageryDate ?? '—'}</strong>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="secondary-button diagnostic-button"
-                      disabled={!solar.response}
-                      onClick={actions.toggleSolarDiagnostics}
-                    >
-                      {solar.showDiagnostics ? 'Hide diagnostic response' : 'Show diagnostic response'}
-                    </button>
-
-                    {solar.showDiagnostics && solar.response && (
-                      <pre className="diagnostic-response">{JSON.stringify(solar.response, null, 2)}</pre>
-                    )}
-                  </details>
                 </div>
               )}
 
@@ -528,6 +555,25 @@ function App() {
                   onGoToProperty={() => setActiveStep('property')}
                   onGoToPanels={() => setActiveStep('panels')}
                   onRedraw={() => setMapTick((t) => t + 1)}
+                  outlineEditId={outlineEditId}
+                  onOutlineEdit={(id) => {
+                    setOutlineEditId(id)
+                    setMapMode(id ? 'outline' : 'move')
+                    if (!id) {
+                      outlineUndo.current = null
+                      setCanUndoOutline(false)
+                    }
+                  }}
+                  onFocusFace={(face) => mapRef.current?.focusFace(face)}
+                  canUndoOutline={canUndoOutline}
+                  onUndoOutline={() => {
+                    const face = roofFaces.find((f) => f.id === outlineEditId)
+                    const prev = outlineUndo.current
+                    if (!face || !prev) return
+                    outlineUndo.current = null
+                    setCanUndoOutline(false)
+                    actions.updateRoofFace(face.id, editedOutline(face, prev))
+                  }}
                 />
               )}
               {activeStep === 'panels' && (
@@ -535,7 +581,12 @@ function App() {
                   onGoToRoof={() => setActiveStep('roof')}
                   roofConfirmed={roofConfirmed}
                   editMode={panelEdit}
-                  onEditMode={setPanelEdit}
+                  mapMode={mapMode}
+                  onEditMode={(on) => setMapMode(on ? 'panels' : 'move')}
+                  onMoveMap={() => {
+                    setMapMode('move')
+                    setOutlineEditId(null)
+                  }}
                 />
               )}
               {activeStep === 'battery' && <BatteryStep />}
@@ -572,6 +623,29 @@ function App() {
 
               <div className={`map-stage ${showReport ? 'hidden-map' : ''}`}>
                 <MapCanvas mapType={mapType} locked={mapLocked} onReady={handleMapReady} onError={handleMapError} />
+                {(activeStep === 'roof' || activeStep === 'panels') && (
+                  <div className="map-tools" role="group" aria-label="Map movement">
+                    <button
+                      type="button"
+                      className={mapMode === 'move' ? 'primary-button' : 'secondary-button'}
+                      onClick={() => {
+                        setMapMode('move')
+                        setOutlineEditId(null)
+                      }}
+                    >
+                      Move map
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.zoomBy?.(1)} aria-label="Zoom in">
+                      +
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.zoomBy?.(-1)} aria-label="Zoom out">
+                      −
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.fitToFaces?.(roofFaces, { force: true })}>
+                      Fit roof
+                    </button>
+                  </div>
+                )}
                 {!showReport && <div className="map-guidance">{stepGuidance ?? mapMessage}</div>}
                 {activeStep === 'output' && <OutputReport />}
                 {activeStep === 'summary' && <SummaryReport />}

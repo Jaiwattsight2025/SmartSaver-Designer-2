@@ -46,7 +46,7 @@ export default function BatteryStep() {
       </select>
       <small className="hint">
         {profile?.recommendedBatteryKwh !== null && profile?.recommendedBatteryKwh !== undefined
-          ? `Wattsight suggested ${profile.recommendedBatteryKwh ? `${profile.recommendedBatteryKwh} kWh` : 'no battery'} from your bill.`
+          ? `Energy Insights suggested ${profile.recommendedBatteryKwh ? `${profile.recommendedBatteryKwh} kWh` : 'no battery'} from your bill.`
           : 'Suggested from your average night-time use.'}{' '}
         A battery stores spare daytime solar for the evening.
       </small>

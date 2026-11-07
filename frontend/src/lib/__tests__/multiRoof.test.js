@@ -1,7 +1,7 @@
 // D2.3: fixes from the multi-address check (synthetic geometry only).
 import { describe, expect, it } from 'vitest'
 import { flagNonRoofFaces } from '../nonRoof'
-import { buildingMatch, buildingMatchWarning, noCoverageMessage } from '../buildingMatch'
+import { buildingMatch, buildingMatchWarning, no3dRoofNote, noCoverageMessage } from '../buildingMatch'
 import { fillFace, layoutPanels, mountFor, panelFootprint, tiltFrameGain, tiltRowShadowGapM, validateLayout } from '../panelLayout'
 import { manualFace } from '../roofFaces'
 import { offset } from '../geo'
@@ -87,8 +87,7 @@ describe('flat roofs use north-facing tilt frames', () => {
     expect(l.notes.join(' ')).toMatch(/tilt frames facing north/)
     expect(validateLayout(l, [flat]).ok).toBe(true)
   })
-  it("Google's flush yields on a flat face are raised for the tilt frame, so flat roofs are not ranked unfairly", () => {
-    expect(tiltFrameGain({ pitchDegrees: 1, azimuthDegrees: 200 })).toBeGreaterThan(1.03)
+  it('does not boost Google flush yields for tilt frames (synthetic flat roof)', () => {
     expect(tiltFrameGain({ pitchDegrees: 22, azimuthDegrees: 0 })).toBe(1)
     const seg = { ...flat, id: 'seg-0', source: 'solar-api', segmentIndex: 0 }
     const insights = {
@@ -99,9 +98,16 @@ describe('flat roofs use north-facing tilt frames', () => {
         solarPanels: [{ segmentIndex: 0, center: { latitude: seg.center.lat, longitude: seg.center.lng }, yearlyEnergyDcKwh: 500 }],
       },
     }
-    const l = layoutPanels({ insights, faces: [seg], panelCount: 4, moduleWatts: 400, state: 'VIC' })
+    const l = layoutPanels({ insights, faces: [seg], panelCount: 4, moduleWatts: 400, state: 'VIC', latitude: -37.8 })
     expect(l.count).toBe(4)
-    for (const p of l.panels) expect(p.yearlyAcKwh).toBeCloseTo(500 * 0.85 * tiltFrameGain(seg), 1)
+    const googleBoosted = 500 * 0.85 * tiltFrameGain(seg)
+    for (const p of l.panels) {
+      expect(p.source).toBe('grid')
+      expect(p.yearlyAcKwh).not.toBeCloseTo(googleBoosted, 0)
+    }
+    expect(l.notes.join(' ')).toMatch(/not Google's flush-panel figure/)
+    expect(l.notes.join(' ')).toMatch(/not a structural design/)
+    expect(l.assumptions.find((a) => a.id === 'winter-sun').source).toBe('latitude')
   })
   it('pitched faces are unchanged (no tilt-frame note)', () => {
     const pitched = manualFace({ id: 'p', label: 'p', vertices: rectV(o, 10, 6), pitchDegrees: 20, azimuthDegrees: 0 })
@@ -131,5 +137,10 @@ describe('wrong building and no coverage', () => {
     const err = Object.assign(new Error('Requested entity was not found.'), { details: { httpStatus: 404 } })
     expect(noCoverageMessage(err)).toMatch(/no 3D roof data/)
     expect(noCoverageMessage(new Error('Quota exceeded'))).toBe('Quota exceeded')
+  })
+  it('says so on the roof step when nothing was traced from 3D', () => {
+    expect(no3dRoofNote([{ source: 'solar-api', outlineShape: 'rectangle' }])).toMatch(/no usable 3D roof model/)
+    expect(no3dRoofNote([{ source: 'solar-api', outlineShape: 'dsm' }])).toBe('')
+    expect(no3dRoofNote([{ source: 'manual', outlineShape: 'traced' }])).toBe('')
   })
 })

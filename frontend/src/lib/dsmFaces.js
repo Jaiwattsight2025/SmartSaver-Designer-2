@@ -116,7 +116,12 @@ export function refineFacesWithDsm(faces, traced) {
   const next = faces.map((face) => {
     if (face.segmentIndex == null || face.outlineEdited) return face
     const t = bySeg.get(face.segmentIndex)
-    if (!t || t.vertices.length < 3 || (t.confidence !== 'high' && t.confidence !== 'medium')) return face
+    if (!t || t.vertices.length < 3 || (t.confidence !== 'high' && t.confidence !== 'medium')) {
+      // A trace we refused (it swallowed another building, or lost most of the face)
+      // stays on the estimate, with a plain reason so the badge is not "good" in silence.
+      if (t?.metrics?.rejectReason) return { ...face, dsmRejectNote: t.metrics.rejectReason }
+      return face
+    }
     refined += 1
     const plan = planAreaM2(t.vertices)
     const cosP = Math.cos(((Number(face.pitchDegrees) || 0) * Math.PI) / 180)

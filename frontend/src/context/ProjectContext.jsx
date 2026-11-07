@@ -1,20 +1,37 @@
 import { createContext, useContext, useMemo, useReducer } from 'react'
 import { createEmptyProject, touchProject } from '../models/Project'
-import { ProfileError, profileFromUrl } from '../lib/energyProfile'
+import { captureHandoffFromBrowser } from '../lib/designerHandoff'
+import { SYNTHETIC_LAT, SYNTHETIC_LNG, syntheticRoofFaces } from '../lib/syntheticFixture'
 
 function createInitialProject() {
   const project = createEmptyProject()
   if (typeof window === 'undefined') return project
-  try {
-    const result = profileFromUrl(window.location.search, window.location.hash)
-    if (result) project.energyProfile = { ...result, error: null, origin: 'link' }
-  } catch (error) {
-    project.energyProfile = {
-      profile: null,
-      warnings: [],
-      error: error instanceof ProfileError ? error.message : 'Could not read the bill data in this link.',
-      origin: 'link',
+  // Strip #handoff= before the first paint, including on the synthetic preview.
+  captureHandoffFromBrowser()
+  if (new URLSearchParams(window.location.search).get('preview') === 'synthetic') {
+    const faces = syntheticRoofFaces()
+    project.building = {
+      ...project.building,
+      address: 'Synthetic fixture VIC 3000',
+      formattedAddress: 'Synthetic fixture VIC 3000',
+      location: { lat: SYNTHETIC_LAT, lng: SYNTHETIC_LNG },
+      propertyFound: true,
+      mapLocked: true,
+      roofFaces: faces,
+      selectedRoofFaceId: faces[0]?.id ?? null,
+      roofModelAccepted: true,
+      solar: {
+        status: 'Connected',
+        summary: { imageryQuality: 'SYNTHETIC FIXTURE', imageryDate: '—' },
+        response: {
+          name: 'synthetic-fixture',
+          center: { latitude: SYNTHETIC_LAT, longitude: SYNTHETIC_LNG },
+          solarPotential: { roofSegmentStats: [] },
+        },
+        showDiagnostics: false,
+      },
     }
+    return project
   }
   return project
 }
@@ -36,12 +53,16 @@ const actionTypes = {
   ACCEPT_ROOF_MODEL: 'ACCEPT_ROOF_MODEL',
   TOGGLE_ROOF_FACE: 'TOGGLE_ROOF_FACE',
   UPDATE_ROOF_FACE: 'UPDATE_ROOF_FACE',
+  UPDATE_ROOF_FACE_LIVE: 'UPDATE_ROOF_FACE_LIVE',
   ADD_ROOF_FACE: 'ADD_ROOF_FACE',
   REMOVE_ROOF_FACE: 'REMOVE_ROOF_FACE',
   SET_ENERGY_PROFILE: 'SET_ENERGY_PROFILE',
   CLEAR_ENERGY_PROFILE: 'CLEAR_ENERGY_PROFILE',
   UPDATE_DESIGN: 'UPDATE_DESIGN',
   UNCONFIRM_ROOF: 'UNCONFIRM_ROOF',
+  SET_DESIGN_SNAPSHOT: 'SET_DESIGN_SNAPSHOT',
+  APPLY_HANDOFF_SUCCESS: 'APPLY_HANDOFF_SUCCESS',
+  APPLY_HANDOFF_ERROR: 'APPLY_HANDOFF_ERROR',
 }
 
 // Any change to the roof means it has to be confirmed again, and hand-picked
@@ -51,6 +72,7 @@ function withFaces(state, roofFaces, selectedRoofFaceId = state.building.selecte
     ...state,
     building: { ...state.building, roofFaces, selectedRoofFaceId, roofModelAccepted: false },
     design: { ...state.design, removedPanelIds: [], pinnedPanelIds: [] },
+    designSnapshot: null,
   })
 }
 
@@ -215,6 +237,15 @@ function reducer(state, action) {
         state.building.roofFaces.map((f) => (f.id === action.payload.id ? { ...f, ...action.payload.changes } : f)),
       )
 
+    case actionTypes.UPDATE_ROOF_FACE_LIVE:
+      return touchProject({
+        ...state,
+        building: {
+          ...state.building,
+          roofFaces: state.building.roofFaces.map((f) => (f.id === action.payload.id ? { ...f, ...action.payload.changes } : f)),
+        },
+      })
+
     case actionTypes.ADD_ROOF_FACE:
       return withFaces(state, [...state.building.roofFaces, action.payload], action.payload.id)
 
@@ -236,6 +267,23 @@ function reducer(state, action) {
 
     case actionTypes.UPDATE_DESIGN:
       return touchProject({ ...state, design: { ...state.design, ...action.payload } })
+
+    case actionTypes.SET_DESIGN_SNAPSHOT:
+      return touchProject({ ...state, designSnapshot: action.payload })
+
+    case actionTypes.APPLY_HANDOFF_SUCCESS:
+      if (state.energyProfile?.profile && state.energyProfile.origin === 'manual') return state
+      return touchProject({
+        ...state,
+        energyProfile: { ...action.payload, error: null, origin: 'insights-handoff' },
+      })
+
+    case actionTypes.APPLY_HANDOFF_ERROR:
+      if (state.energyProfile?.profile) return state
+      return touchProject({
+        ...state,
+        energyProfile: { profile: null, warnings: [], error: action.payload, origin: 'insights-handoff' },
+      })
 
     default:
       return state
@@ -272,12 +320,17 @@ export function ProjectProvider({ children }) {
       toggleRoofFace: (id) => dispatch({ type: actionTypes.TOGGLE_ROOF_FACE, payload: id }),
       updateRoofFace: (id, changes) =>
         dispatch({ type: actionTypes.UPDATE_ROOF_FACE, payload: { id, changes } }),
+      updateRoofFaceLive: (id, changes) =>
+        dispatch({ type: actionTypes.UPDATE_ROOF_FACE_LIVE, payload: { id, changes } }),
       addRoofFace: (face) => dispatch({ type: actionTypes.ADD_ROOF_FACE, payload: face }),
       removeRoofFace: (id) => dispatch({ type: actionTypes.REMOVE_ROOF_FACE, payload: id }),
       setEnergyProfile: (payload) => dispatch({ type: actionTypes.SET_ENERGY_PROFILE, payload }),
       clearEnergyProfile: () => dispatch({ type: actionTypes.CLEAR_ENERGY_PROFILE }),
       updateDesign: (payload) => dispatch({ type: actionTypes.UPDATE_DESIGN, payload }),
       unconfirmRoof: () => dispatch({ type: actionTypes.UNCONFIRM_ROOF }),
+      setDesignSnapshot: (payload) => dispatch({ type: actionTypes.SET_DESIGN_SNAPSHOT, payload }),
+      applyHandoffSuccess: (payload) => dispatch({ type: actionTypes.APPLY_HANDOFF_SUCCESS, payload }),
+      applyHandoffError: (payload) => dispatch({ type: actionTypes.APPLY_HANDOFF_ERROR, payload }),
     }),
     [],
   )
@@ -291,6 +344,7 @@ export function ProjectProvider({ children }) {
       results: project.results,
       energyProfile: project.energyProfile,
       designChoices: project.design,
+      designSnapshot: project.designSnapshot ?? null,
       actions,
     }),
     [project, actions],

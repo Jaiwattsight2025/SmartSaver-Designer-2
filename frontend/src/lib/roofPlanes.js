@@ -804,6 +804,32 @@ export function faceAdjacency(labelled, raster, { reachPx = 2 } = {}) {
 }
 
 /**
+ * How much to trust a traced outline.
+ * A trace far bigger or smaller than Google's own area for that face is
+ * rejected (low): it usually means the next building got merged in, or most
+ * of the face was lost. Those traces must not be used for panels.
+ * Returns { confidence, rejectReason, areaRatio }.
+ */
+export function confidenceFromQuality({ iou = 0, onBuilding = 0, rmsM = null, pixelAreaM2 = 0, polyArea = 0, googleArea = 0 } = {}) {
+  let confidence = 'none'
+  let rejectReason = null
+  const areaRatio = googleArea > 0 ? polyArea / googleArea : null
+  if (polyArea >= 1) {
+    confidence = 'low'
+    if (iou >= 0.7 && onBuilding >= 0.85) confidence = 'medium'
+    if (iou >= 0.8 && onBuilding >= 0.92 && (rmsM ?? 1) <= 0.15 && pixelAreaM2 >= 2) confidence = 'high'
+    if (areaRatio !== null && (areaRatio > 2 || areaRatio < 0.45)) {
+      confidence = 'low'
+      rejectReason =
+        areaRatio > 2
+          ? `3D outline left out: it was about ${areaRatio.toFixed(1)}× this face and may include the next building. The estimate is shown instead — check the corners.`
+          : `3D outline left out: it covered about ${Math.round(areaRatio * 100)}% of this face. The estimate is shown instead — check the corners.`
+    } else if (confidence === 'high' && areaRatio !== null && (areaRatio > 1.6 || areaRatio < 0.6)) confidence = 'medium'
+  }
+  return { confidence, rejectReason, areaRatio }
+}
+
+/**
  * Whole pipeline. `segments` as for labelRoof. Returns per segment:
  * { index, polygon (local metres, CCW), confidence, metrics }.
  */
@@ -820,27 +846,28 @@ export function roofFacesFromDsm(raster, segments, opts = {}) {
       const st = labelled.stats[f.k]
       const q = polygonQuality(f.polygon, f.k, labelled, raster)
       const polyArea = f.polygon.length >= 3 ? area(f.polygon) : 0
-      let confidence = 'none'
-      if (polyArea >= 1) {
-        confidence = 'low'
-        if (q.iou >= 0.7 && q.onBuilding >= 0.85) confidence = 'medium'
-        if (q.iou >= 0.8 && q.onBuilding >= 0.92 && (st.rmsM ?? 1) <= 0.15 && st.areaM2 >= 2) confidence = 'high'
-        // Far bigger or smaller than Google's own area for this face: something else got merged in (or lost).
-        const googleArea = Number(segments[f.k].areaM2) || 0
-        const ratio = googleArea > 0 ? polyArea / googleArea : 1
-        if (confidence === 'high' && (ratio > 1.6 || ratio < 0.6)) confidence = 'medium'
-      }
+      const googleArea = Number(segments[f.k].areaM2) || 0
+      const judged = confidenceFromQuality({
+        iou: q.iou,
+        onBuilding: q.onBuilding,
+        rmsM: st.rmsM,
+        pixelAreaM2: st.areaM2,
+        polyArea,
+        googleArea,
+      })
       const fitted = planePitchAzimuth(labelled.planes[f.k])
       return {
         index: segments[f.k].index,
         polygon: f.polygon,
-        confidence,
+        confidence: judged.confidence,
         metrics: {
           planAreaM2: polyArea,
           pixelAreaM2: st.areaM2,
           rmsM: st.rmsM,
           iou: q.iou,
           onBuilding: q.onBuilding,
+          areaRatio: judged.areaRatio,
+          rejectReason: judged.rejectReason,
           fittedPitch: fitted.pitchDegrees,
           fittedAzimuth: fitted.azimuthDegrees,
         },

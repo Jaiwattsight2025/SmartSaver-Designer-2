@@ -14,16 +14,20 @@
  *     (over HOUSE_MAX_M2) a wall step usually separates tenancies, so that
  *     roof is left out;
  *   - a roof that touches nothing is a separate building.
+ * Outlines the 3D model never joined (a failed trace, or no 3D data at all)
+ * are still split by distance: faces within CONNECT_GAP_M of the roof you
+ * picked stay; anything farther is a separate building. A neighbour that
+ * actually touches your outline, with no 3D wall step, is kept — tick it off
+ * if it is next door.
  * Faces off the main roof are unticked and badged "Other roof - tick to
- * include". Faces drawn or edited by the user, and faces with no 3D data,
- * are left alone.
+ * include". Faces drawn or edited by the user are left alone.
  */
 import { MAIN_ROOF } from '../config/designerConfig'
 import { toLatLng, toLocal } from './geo'
-import { pointInPolygon, pointSegmentDistance } from './polygon'
+import { boundaryDistance, pointInPolygon, pointSegmentDistance, polygonsOverlap } from './polygon'
 
 export const OTHER_ROOF_LABEL = 'Other roof - tick to include'
-const { STEP_M, MIN_EDGE_M, WALL_EDGE_M, HOUSE_MAX_M2, SEED_MAX_M } = MAIN_ROOF
+const { STEP_M, MIN_EDGE_M, WALL_EDGE_M, HOUSE_MAX_M2, SEED_MAX_M, CONNECT_GAP_M } = MAIN_ROOF
 
 const planArea = (f) => Number(f.groundAreaSquareMetres ?? f.areaSquareMetres) || 0
 
@@ -63,44 +67,97 @@ function components(nodes, edges) {
   return [...out.values()]
 }
 
+/** Metres between two outlines (0 when they overlap or touch). */
+export function outlineGapM(a, b) {
+  if (!a?.vertices || !b?.vertices || a.vertices.length < 3 || b.vertices.length < 3) return Infinity
+  const origin = toLatLng(a.vertices[0])
+  if (!origin) return Infinity
+  const pa = a.vertices.map((v) => toLocal(origin, toLatLng(v))).filter(Boolean)
+  const pb = b.vertices.map((v) => toLocal(origin, toLatLng(v))).filter(Boolean)
+  if (pa.length < 3 || pb.length < 3) return Infinity
+  if (polygonsOverlap(pa, pb)) return 0
+  return boundaryDistance(pa, pb)
+}
+
+const canSeparate = (f) => f?.source === 'solar-api' && !f.outlineEdited && f.segmentIndex != null && f.vertices?.length >= 3
+
+/**
+ * Pull in every separable face within CONNECT_GAP_M of the roof already
+ * chosen, crossing a chain of shared edges. Faces already marked `other`
+ * (a wall on a big building) are not pulled back in.
+ */
+function absorbTouching(list, kept, other) {
+  const queue = [...kept]
+  while (queue.length) {
+    const k = queue.pop()
+    const a = list.find((f) => f.segmentIndex === k)
+    if (!a) continue
+    for (const b of list) {
+      if (kept.has(b.segmentIndex) || other.has(b.segmentIndex)) continue
+      if (outlineGapM(a, b) <= CONNECT_GAP_M) {
+        kept.add(b.segmentIndex)
+        queue.push(b.segmentIndex)
+      }
+    }
+  }
+}
+
 /**
  * Split faces into the main roof and other roofs.
  * adjacency: [{ a, b, stepM, lenM }] by segment index (from roofFacesFromDsm).
  * Returns { seed, main: Set(segIdx), attached: Set(segIdx), other: Map(segIdx -> reason) } or null
- * when there is nothing to decide (no 3D data, or no face near the locked point).
+ * when no face is near the locked point.
  */
 export function splitMainRoof(faces, adjacency, target) {
-  if (!adjacency?.length) return null
-  const seed = seedFace(faces ?? [], target)
+  const list = (faces ?? []).filter((f) => f.segmentIndex != null)
+  const seed = seedFace(list, target)
   if (!seed) return null
-  const bySeg = new Map(faces.filter((f) => f.segmentIndex != null).map((f) => [f.segmentIndex, f]))
-  const touched = new Set(adjacency.flatMap((e) => [e.a, e.b]))
+  const bySeg = new Map(list.map((f) => [f.segmentIndex, f]))
+  const adj = adjacency ?? []
+  const touched = new Set(adj.flatMap((e) => [e.a, e.b]))
   const nodes = [...bySeg.keys()].filter((k) => touched.has(k) || bySeg.get(k).outlineShape === 'dsm')
-  if (!nodes.includes(seed.segmentIndex)) return null
-  const joins = adjacency.filter((e) => e.lenM >= MIN_EDGE_M && e.stepM < STEP_M)
-  const walls = adjacency.filter((e) => e.lenM >= WALL_EDGE_M && e.stepM >= STEP_M)
-  const comps = components(nodes, joins)
-  const compOf = new Map()
-  comps.forEach((c, i) => c.forEach((n) => compOf.set(n, i)))
-  const main = comps[compOf.get(seed.segmentIndex)]
-  const mainArea = [...main].reduce((t, k) => t + planArea(bySeg.get(k)), 0)
-  const houseSized = mainArea <= HOUSE_MAX_M2
-  const attached = new Set()
-  const other = new Map()
-  for (const e of walls) {
-    const [inMain, out] = main.has(e.a) ? [e.a, e.b] : main.has(e.b) ? [e.b, e.a] : [null, null]
-    if (inMain === null || main.has(out)) continue
-    const comp = comps[compOf.get(out)]
-    for (const k of comp) {
-      if (houseSized) attached.add(k)
-      else if (!other.has(k)) other.set(k, `behind a ${e.stepM.toFixed(1)} m wall from the roof you picked - probably next door`)
+  let main
+  let attached
+  let other
+  let mainArea
+  if (adj.length && nodes.includes(seed.segmentIndex)) {
+    const joins = adj.filter((e) => e.lenM >= MIN_EDGE_M && e.stepM < STEP_M)
+    const walls = adj.filter((e) => e.lenM >= WALL_EDGE_M && e.stepM >= STEP_M)
+    const comps = components(nodes, joins)
+    const compOf = new Map()
+    comps.forEach((c, i) => c.forEach((n) => compOf.set(n, i)))
+    main = comps[compOf.get(seed.segmentIndex)]
+    mainArea = [...main].reduce((t, k) => t + planArea(bySeg.get(k)), 0)
+    const houseSized = mainArea <= HOUSE_MAX_M2
+    attached = new Set()
+    other = new Map()
+    for (const e of walls) {
+      const [inMain, out] = main.has(e.a) ? [e.a, e.b] : main.has(e.b) ? [e.b, e.a] : [null, null]
+      if (inMain === null || main.has(out)) continue
+      const comp = comps[compOf.get(out)]
+      for (const k of comp) {
+        if (houseSized) attached.add(k)
+        else if (!other.has(k)) other.set(k, `behind a ${e.stepM.toFixed(1)} m wall from the roof you picked - probably next door`)
+      }
     }
+    for (const k of nodes) {
+      if (main.has(k) || attached.has(k) || other.has(k)) continue
+      other.set(k, 'not joined to the roof you picked - a separate building')
+    }
+    for (const k of attached) other.delete(k)
+  } else {
+    main = new Set([seed.segmentIndex])
+    attached = new Set()
+    other = new Map()
+    mainArea = planArea(seed)
   }
-  for (const k of nodes) {
-    if (main.has(k) || attached.has(k) || other.has(k)) continue
-    other.set(k, 'not joined to the roof you picked - a separate building')
+  // Faces the 3D join graph never mentioned (estimate-only, or no 3D data).
+  const kept = new Set([...main, ...attached])
+  absorbTouching(list.filter(canSeparate), kept, other)
+  for (const f of list) {
+    if (!canSeparate(f) || kept.has(f.segmentIndex) || other.has(f.segmentIndex)) continue
+    other.set(f.segmentIndex, 'not joined to the roof you picked - a separate building')
   }
-  for (const k of attached) other.delete(k)
   return { seed: seed.segmentIndex, main, attached, other, mainAreaM2: mainArea }
 }
 

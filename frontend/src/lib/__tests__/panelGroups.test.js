@@ -22,26 +22,26 @@ describe('panel groups (no odd singles)', () => {
     expect(fillFace(small).cells.length).toBeGreaterThan(0)
     expect(fillFace(small).cells.length).toBeLessThan(4)
   })
-  it('never leaves fewer than 4 on a face from the auto-fill', () => {
+  it('places 1–3 panels on a small face and warns, without dropping them', () => {
     const l = run({ panelCount: 99 })
     const n = perFace(l)
-    expect(n.small).toBeUndefined()
-    expect(l.count).toBe(fillFace(big).cells.length)
-    expect(l.available).toBe(l.count)
-    for (const k of Object.values(n)) expect(k).toBeGreaterThanOrEqual(4)
-    expect(validateLayout(l, [big, small]).issues.filter((i) => i.level === 'warning')).toHaveLength(0)
+    expect(n.small).toBe(fillFace(small).cells.length)
+    expect(n.small).toBeGreaterThan(0)
+    expect(n.small).toBeLessThan(4)
+    expect(l.spatialCount).toBe(fillFace(big).cells.length + fillFace(small).cells.length)
+    const warn = validateLayout(l, [big, small]).issues.filter((i) => i.level === 'warning')
+    expect(warn.map((w) => w.message).join(' ')).toMatch(/small has only/)
   })
-  it('a tiny system may use groups of 2', () => {
+  it('a small target can use the small face', () => {
     const l = run({ panelCount: 5 })
     const n = perFace(l)
     expect(l.count).toBe(5)
-    for (const k of Object.values(n)) expect(k).toBeGreaterThanOrEqual(2)
-    expect(n.small).toBe(3) // best (north) face first
+    expect(n.small).toBe(3)
   })
-  it('reallocates a too-small leftover rather than leaving a single', () => {
+  it('does not refuse a single panel on the larger face to protect a minimum of four', () => {
     const l = run({ panelCount: 4 })
     expect(l.count).toBe(4)
-    for (const k of Object.values(perFace(l))) expect(k).toBeGreaterThanOrEqual(2)
+    expect(perFace(l).small).toBe(3)
   })
   it('the minimum is configurable', () => {
     const l = run({ panelCount: 99, minPanelsPerFace: 2 })
@@ -69,6 +69,21 @@ describe('panel groups (no odd singles)', () => {
     expect(perFace(l).small).toBe(1)
     const warn = validateLayout(l, [big, small]).issues.filter((i) => i.level === 'warning')
     expect(warn.map((w) => w.message).join(' ')).toMatch(/small has only 1 panel/)
+  })
+  it('keeps every panel inside an L-shaped face, including the setback', () => {
+    const o = a0
+    const p = (east, north) => offset(offset(o, east, 90), north, 0)
+    // 10 m x 8 m with a 5 m x 4 m notch taken out of the north-east.
+    const face = manualFace({
+      id: 'ell',
+      vertices: [p(0, 0), p(10, 0), p(10, 4), p(5, 4), p(5, 8), p(0, 8)],
+      pitchDegrees: 22,
+      azimuthDegrees: 0,
+    })
+    const l = layoutPanels({ insights: null, faces: [face], panelCount: 99, moduleWatts: 440, state: 'VIC' })
+    expect(l.count).toBeGreaterThanOrEqual(4)
+    expect(validateLayout(l, [face]).ok).toBe(true)
+    expect(l.dcKw).toBeLessThanOrEqual(13.2)
   })
   it('chooseBlock prefers a full rectangle over a stepped fragment', () => {
     const cells = []

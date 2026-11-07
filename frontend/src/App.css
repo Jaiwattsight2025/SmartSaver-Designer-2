@@ -685,6 +685,23 @@ button:disabled {
   min-height: 520px;
 }
 
+.map-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.map-tools button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .map-guidance {
   position: absolute;
   top: 14px;
@@ -1023,6 +1040,13 @@ button:disabled {
   border-color: rgba(32, 169, 124, 0.55);
 }
 
+.roof-face-card.selected,
+.roof-face-card.included.selected {
+  border: 2px solid #c8960a;
+  background: #fff6d8;
+  box-shadow: inset 0 0 0 1px #f5c451;
+}
+
 .face-row {
   display: flex;
   align-items: center;
@@ -1079,6 +1103,164 @@ button:disabled {
   margin-top: 8px;
 }
 
+.face-edit-azimuth {
+  grid-template-columns: 1fr auto;
+}
+
+.face-mount {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.face-mount .pitch-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.face-mount .pitch-row label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.face-mount .count-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  width: 100%;
+  align-items: center;
+}
+
+.face-mount .count-row button,
+.face-mount .count-row input {
+  width: 100%;
+  margin: 0;
+}
+
+.face-mount .outline-badge {
+  margin-bottom: 4px;
+}
+
+.mount-summary {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.azimuth-line {
+  color: var(--muted);
+}
+
+.azimuth-editor input,
+.azimuth-editor select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 40px;
+}
+
+.azimuth-editor .match-face {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.roof-face-card:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+details.adjust-design {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 0 10px 10px;
+}
+
+details.adjust-design summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.synthetic-banner {
+  margin: 0 0 12px;
+}
+
+@media (max-width: 850px) {
+  .app-shell,
+  body {
+    overflow-x: clip;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .control-stack input,
+  .control-stack select,
+  .step-button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .control-stack input,
+  .control-stack select {
+    width: 100%;
+  }
+
+  .panel-navigation {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin: 12px -4px 0;
+    padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--line);
+  }
+
+  .map-guidance,
+  .info-box,
+  .mount-summary,
+  .stage-coordinates,
+  .brand-name,
+  h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .map-guidance {
+    font-size: 14px;
+    border-radius: 12px;
+    max-width: calc(100% - 16px);
+  }
+
+  .two-column-buttons,
+  .three-column-buttons,
+  .sizing-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .count-row {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .topbar,
+  .workspace,
+  .control-panel,
+  .designer-grid {
+    max-width: 100%;
+  }
+}
+
 .face-edit label {
   display: flex;
   flex-direction: column;
@@ -1099,6 +1281,54 @@ button:disabled {
 
 .trace-box small {
   color: var(--muted);
+}
+
+.sizing-facts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.sizing-facts p,
+.sizing-facts label {
+  margin: 0;
+}
+
+.sizing-facts span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.layout-sketch-wrap,
+.supply-chart {
+  margin: 8px 0 12px;
+}
+
+.layout-sketch {
+  width: 100%;
+  max-width: 320px;
+  height: 140px;
+  background: #f4f1ea;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.supply-split {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.supply-doughnut {
+  width: 88px;
+  height: 88px;
+  flex: none;
+}
+
+.price-block h4 {
+  margin-top: 14px;
 }
 
 .count-row {
@@ -1300,55 +1530,415 @@ details.solar-panel summary::-webkit-details-marker {
   }
 }
 
-/* Print / Save as PDF: only the design summary */
+.proposal {
+  --report-green: #20a97c;
+  --report-deep: #003c2b;
+  --report-ink: #1a3c34;
+  --report-muted: #5f7570;
+  --report-line: #d5e3dc;
+  --report-mint: #eaf6f1;
+  --report-amber: #f5a623;
+  --report-amber-soft: #fbf6ea;
+  --report-amber-line: #e6c27a;
+  --report-daylight: #20a878;
+  --report-battery: #186888;
+  --report-export: #f0a020;
+  --report-loss: #b0b8b8;
+  color: var(--report-ink);
+}
+
+.proposal-mast {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.proposal-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.proposal-brand strong {
+  display: block;
+  color: var(--report-deep);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.proposal-brand span,
+.proposal-meta {
+  color: var(--report-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.proposal-meta {
+  margin: 0;
+  text-align: right;
+}
+
+.proposal-mark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+
+.proposal-banner,
+.proposal-callout,
+.proposal-disclaimer {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.proposal-banner.example,
+.proposal-banner.estimate {
+  border: 1px solid var(--report-amber-line);
+  background: var(--report-amber-soft);
+  color: #5c4810;
+}
+
+.proposal-callout {
+  border: 0;
+  border-left: 4px solid var(--report-green);
+  background: var(--report-mint);
+  color: var(--report-ink);
+}
+
+.proposal-callout strong {
+  color: var(--report-deep);
+  font-size: 16px;
+}
+
+.proposal h3 {
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--report-green);
+  color: var(--report-deep);
+  font-size: 18px;
+}
+
+.proposal-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.proposal-card {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--report-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.proposal-card span,
+.proposal-card small {
+  display: block;
+  color: var(--report-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.proposal-card strong {
+  display: block;
+  margin: 2px 0;
+  color: var(--report-deep);
+  font-size: 16px;
+}
+
+.proposal-face {
+  display: block;
+  text-align: left;
+}
+
+.proposal-faces {
+  text-align: left !important;
+}
+
+.proposal-cite,
+.proposal .chart-note,
+.proposal-disclaimer {
+  color: var(--report-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.proposal-disclaimer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 2px solid var(--report-green);
+  border-radius: 0;
+}
+
+.proposal-endorsement {
+  margin: 8px 0 0;
+  color: var(--report-muted);
+  font-size: 11px;
+}
+
+.proposal-donuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.proposal-donuts.single {
+  grid-template-columns: minmax(0, 280px);
+}
+
+.proposal-donut {
+  margin: 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.proposal-donut svg {
+  width: 148px;
+  height: 148px;
+  display: block;
+  margin: 0 auto;
+}
+
+.proposal-legend {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+}
+
+.proposal-legend li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 2px 0;
+}
+
+.proposal-legend i {
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.proposal .monthly-chart .bar-gen,
+.proposal .monthly-chart .key.gen {
+  fill: var(--report-amber);
+  background: var(--report-amber);
+}
+
+.proposal .monthly-chart .bar-load,
+.proposal .monthly-chart .key.load {
+  fill: var(--report-deep);
+  background: var(--report-deep);
+}
+
+.proposal .chart-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--report-deep);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.proposal .layout-sketch {
+  background: var(--report-mint);
+  border-color: var(--report-line);
+}
+
+.proposal .report-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.proposal .report-table td:first-child {
+  width: 38%;
+  color: var(--report-muted);
+  font-weight: 600;
+}
+
+.proposal .report-table td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.proposal-cover,
+.proposal-follow {
+  margin: 0;
+}
+
+.proposal-follow {
+  margin-top: 28px;
+}
+
+/* Print / Save as PDF: A4 proposal. Cover, then layout, generation and price basis. */
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm;
+
+  @bottom-left {
+    content: "Indicative estimate, not a quote";
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    color: #5f7570;
+  }
+
+  @bottom-right {
+    content: "Solar Designer  |  Page " counter(page);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    color: #1a3c34;
+  }
+}
+
 @media print {
+  html,
   body,
-  .app-shell {
+  .app-shell,
+  .main-layout,
+  .designer-grid,
+  .workspace,
+  .design-stage,
+  .map-stage {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
     background: #fff !important;
     color: #111 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
   }
 
   .topbar,
   .step-sidebar,
   .workspace-toolbar,
   .control-panel,
+  .panel-navigation,
   .stage-header,
   .metrics-strip,
   .google-map,
-  .map-guidance {
+  .map-guidance,
+  .map-tools {
     display: none !important;
-  }
-
-  .main-layout,
-  .designer-grid,
-  .workspace {
-    display: block !important;
-    padding: 0 !important;
-  }
-
-  .design-stage,
-  .map-stage {
-    min-height: 0 !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    background: #fff !important;
-    overflow: visible !important;
   }
 
   .report {
     position: static !important;
+    inset: auto !important;
     overflow: visible !important;
+    height: auto !important;
     background: #fff !important;
     color: #111 !important;
+    padding: 0 !important;
+  }
+
+  .report-columns {
+    display: block !important;
+  }
+
+  .proposal-cover {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .proposal-follow {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0;
+  }
+
+  /* Roof layout is short. Generation continues on that page instead of opening a sparse sheet. */
+  .proposal-generation {
+    break-before: auto;
+    page-break-before: auto;
+    margin-top: 18px;
+  }
+
+  .report-table,
+  .monthly-chart,
+  .layout-sketch-wrap,
+  .proposal-cards,
+  .proposal-callout,
+  .proposal-banner,
+  .proposal-donut,
+  .proposal-mast {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .proposal-cover .layout-sketch {
+    height: 78px;
+  }
+
+  .layout-sketch,
+  .proposal-donut svg,
+  .proposal-mark,
+  .proposal-banner,
+  .proposal-callout,
+  .proposal-card,
+  .proposal-legend i,
+  .monthly-chart .bar-gen,
+  .monthly-chart .bar-load {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .proposal-endorsement {
+    display: none;
+  }
+
+  .proposal .report-table td {
+    padding: 4px 0;
+  }
+
+  .proposal h4 {
+    margin: 8px 0 4px;
+  }
+
+  .proposal-cite,
+  .proposal-disclaimer {
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .proposal-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .proposal-donuts {
+    grid-template-columns: 1fr 1fr;
   }
 
   .report p,
   .hint {
-    color: #444 !important;
+    color: #333 !important;
   }
 
-  .report h4 {
-    color: #178a64 !important;
+  .report h3,
+  .report h4,
+  .proposal-brand strong,
+  .proposal-card strong,
+  .proposal .chart-title {
+    color: #003c2b !important;
   }
 
   .report-table td {
@@ -1359,9 +1949,8 @@ details.solar-panel summary::-webkit-details-marker {
     color: #0f6b4a !important;
   }
 
-  .placeholder-banner {
-    color: #9b1c1c !important;
-    background: #fdecec !important;
+  .monthly-chart svg {
+    max-height: 180px;
   }
 
   .print-only {

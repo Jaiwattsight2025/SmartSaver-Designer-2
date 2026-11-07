@@ -29,6 +29,17 @@ export function buildingMatchWarning(target, insights, { toleranceM = 3 } = {}) 
   return ` Google's nearest roof is about ${Math.round(m.distanceM)} m from the centre of the map - if that is not your house, press Reposition, centre the map on your roof and lock again.`
 }
 
+/**
+ * Shown on the roof step when building insights worked but no face got a
+ * usable 3D outline (rural and new areas, or a trace that was rejected).
+ * Empty when at least one face was traced, or there is nothing from Google.
+ */
+export function no3dRoofNote(faces) {
+  const solar = (faces ?? []).filter((f) => f.source === 'solar-api')
+  if (!solar.length || solar.some((f) => f.outlineShape === 'dsm')) return ''
+  return 'Google has no usable 3D roof model for this spot (common in rural and new areas), so these outlines are estimates. Drag a corner dot onto the roof edge, or drag an edge dot to add a corner. Undo puts the last corner edit back. You can also trace the roof yourself.'
+}
+
 /** Friendlier text for "no Solar API building here" errors. */
 export function noCoverageMessage(error) {
   const status = error?.details?.httpStatus

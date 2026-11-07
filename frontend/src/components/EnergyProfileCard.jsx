@@ -1,14 +1,15 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useProject } from '../context/ProjectContext'
-import { ProfileError, profileFromFileText, profileFromManual } from '../lib/energyProfile'
+import { ProfileError, profileFromManual } from '../lib/energyProfile'
+import { INSIGHTS_APP_URL } from '../lib/designerHandoff'
 import { STATES } from '../config/designerConfig'
 
 const cents = (dollars, dp = 1) => (dollars === null || dollars === undefined ? '—' : `${(dollars * 100).toFixed(dp)}c`)
 const kwh = (x) => (x === null || x === undefined ? '—' : `${Math.round(x).toLocaleString('en-AU')} kWh`)
 
 const SOURCE_LABEL = {
-  wattsight: 'from your Wattsight link',
-  'wattsight-file': 'from your Wattsight results file',
+  wattsight: 'from Energy Insights',
+  'wattsight-file': 'from Energy Insights',
   manual: 'entered by you',
 }
 
@@ -28,7 +29,7 @@ function ManualForm({ initial, onSave, onCancel }) {
     event.preventDefault()
     try {
       const result = profileFromManual(form)
-      // Keep Wattsight's system recommendation if we are editing a Wattsight profile.
+      // Keep the Energy Insights recommendation if we are editing a handed-off profile.
       if (initial) {
         result.profile.recommendedSolarKw = initial.recommendedSolarKw
         result.profile.recommendedBatteryKwh = initial.recommendedBatteryKwh
@@ -90,28 +91,7 @@ function ManualForm({ initial, onSave, onCancel }) {
 export default function EnergyProfileCard({ compact = false }) {
   const { energyProfile, actions } = useProject()
   const [editing, setEditing] = useState(false)
-  const [fileError, setFileError] = useState('')
-  const fileRef = useRef(null)
   const profile = energyProfile?.profile ?? null
-
-  const onFile = async (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setFileError('')
-    try {
-      if (file.size > 256 * 1024) throw new ProfileError('That file is too big to be a Wattsight results file.')
-      const result = profileFromFileText(await file.text())
-      actions.setEnergyProfile({ ...result, error: null, origin: 'file' })
-      setEditing(false)
-    } catch (err) {
-      setFileError(err instanceof ProfileError ? err.message : 'Could not read that file.')
-    }
-  }
-
-  const fileInput = (
-    <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={onFile} data-testid="profile-file" />
-  )
 
   if (editing) {
     return (
@@ -135,34 +115,31 @@ export default function EnergyProfileCard({ compact = false }) {
   if (!profile) {
     return (
       <div className="profile-card empty">
-        {fileInput}
         <div className="profile-card-heading">
           <span>YOUR BILL DATA</span>
           <strong>No bill data yet</strong>
         </div>
         {energyProfile?.error && <div className="info-box error">{energyProfile.error}</div>}
         <p>
-          Add your electricity use so we can work out your savings. Use your Wattsight results file, or type in a few
-          numbers from your bill.
+          Add your electricity use so we can work out your savings. Analyse your bill in Energy Insights, or type the
+          numbers from your bill. This Designer does not take a bill file.
         </p>
         <div className="two-column-buttons">
-          <button type="button" className="secondary-button" onClick={() => fileRef.current?.click()}>
-            Load Wattsight file
-          </button>
+          <a className="primary-button as-link" href={INSIGHTS_APP_URL} target="_blank" rel="noopener noreferrer">
+            Analyse my bill in Energy Insights
+          </a>
           <button type="button" className="secondary-button" onClick={() => setEditing(true)}>
-            Enter manually
+            Enter bill numbers
           </button>
         </div>
-        {fileError && <div className="info-box error">{fileError}</div>}
       </div>
     )
   }
 
   return (
     <div className="profile-card">
-      {fileInput}
       <div className="profile-card-heading">
-        <span>{profile.source === 'manual' ? 'YOUR BILL DATA' : 'YOUR BILL DATA FROM WATTSIGHT'}</span>
+        <span>{profile.source === 'manual' ? 'YOUR BILL DATA' : 'YOUR BILL DATA FROM ENERGY INSIGHTS'}</span>
         <strong>{SOURCE_LABEL[profile.source] ?? 'loaded'}</strong>
       </div>
       <dl className="profile-grid">
@@ -204,7 +181,7 @@ export default function EnergyProfileCard({ compact = false }) {
         )}
         {!compact && (profile.recommendedSolarKw || profile.recommendedBatteryKwh !== null) && (
           <div>
-            <dt>Wattsight suggested</dt>
+            <dt>Energy Insights suggested</dt>
             <dd>
               {profile.recommendedSolarKw ? `${profile.recommendedSolarKw} kW solar` : ''}
               {profile.recommendedBatteryKwh ? ` + ${profile.recommendedBatteryKwh} kWh battery` : ''}
@@ -220,15 +197,14 @@ export default function EnergyProfileCard({ compact = false }) {
           <button type="button" className="link-button" onClick={() => setEditing(true)}>
             Edit
           </button>
-          <button type="button" className="link-button" onClick={() => fileRef.current?.click()}>
-            Load another file
-          </button>
+          <a className="link-button" href={INSIGHTS_APP_URL} target="_blank" rel="noopener noreferrer">
+            Analyse my bill in Energy Insights
+          </a>
           <button type="button" className="link-button" onClick={actions.clearEnergyProfile}>
             Remove
           </button>
         </div>
       )}
-      {fileError && <div className="info-box error">{fileError}</div>}
     </div>
   )
 }

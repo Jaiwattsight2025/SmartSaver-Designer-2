@@ -5,11 +5,68 @@
  * area (see roofOutline.js) instead of hugging Google's panel spots, and the
  * customer confirms or drags the corners before panels are placed.
  */
-import { MIN_FACE_AREA_M2 } from '../config/designerConfig'
+import { FLAT_ROOF_MAX_PITCH_DEG, MIN_FACE_AREA_M2, TILT_FRAME_DEG } from '../config/designerConfig'
 import { orientationFromAzimuth } from '../models/RoofFace'
 import { centroid, fromLocal, planAreaM2, toLatLng, toLocal } from './geo'
 import { overlapArea } from './polygon'
 import { estimateSegmentOutline } from './roofOutline'
+
+export const INSTALL_FLUSH = 'flush'
+export const INSTALL_TILT = 'tilt'
+
+/** Under FLAT_ROOF_MAX_PITCH_DEG the roof is flat — the same cut the panel layout uses. */
+export function isFlatPitch(pitchDegrees) {
+  return (Number(pitchDegrees) || 0) < FLAT_ROOF_MAX_PITCH_DEG
+}
+
+/** Pitched faces sit flush on the roof. Near-flat faces use tilt frames. */
+export function defaultInstallType(pitchDegrees) {
+  return isFlatPitch(pitchDegrees) ? INSTALL_TILT : INSTALL_FLUSH
+}
+
+/** 0° is north, 90° is east, clockwise. 360 and -10 both land in 0–360. */
+export function wrapAzimuth(deg) {
+  const n = Number(deg)
+  if (!Number.isFinite(n)) return 0
+  return Math.round((((n % 360) + 360) % 360) * 10) / 10
+}
+
+/** The install type to use: a saved choice, otherwise the pitch default. */
+export function installTypeOf(face) {
+  if (face?.installType === INSTALL_TILT || face?.installType === INSTALL_FLUSH) return face.installType
+  return defaultInstallType(face?.pitchDegrees)
+}
+
+/**
+ * Always-visible line: roof pitch (detected or overridden) kept separate from
+ * how the panels sit. Tilt frames are a drawing assumption, not a structural approval.
+ */
+export function mountSummary(face) {
+  const pitch = Number(face?.pitchDegrees) || 0
+  const detected = Number(face?.detectedPitchDegrees)
+  const tilt = installTypeOf(face) === INSTALL_TILT
+  let pitchBit
+  if (face?.pitchEdited && Number.isFinite(detected) && detected !== pitch) {
+    pitchBit = `Roof pitch ${pitch}° (you changed it from the detected ${detected}°).`
+  } else if (face?.source === 'solar-api' && Number.isFinite(detected)) {
+    pitchBit = `Roof pitch ${pitch}° (detected from Google's roof data).`
+  } else if (face?.pitchEdited) {
+    pitchBit = `Roof pitch ${pitch}° (you set this).`
+  } else {
+    pitchBit = `Roof pitch ${pitch}°.`
+  }
+  const flatBit = isFlatPitch(pitch) ? ` This roof is under ${FLAT_ROOF_MAX_PITCH_DEG}°, so it is treated as flat.` : ''
+  const mountBit = tilt
+    ? ` Panels are drawn on ${TILT_FRAME_DEG}° tilt frames facing north. That is a layout sketch, not a structural design.`
+    : ' Panels sit flush on the roof, so the panel tilt is the roof pitch.'
+  const chosen = face?.installEdited ? ' You chose this mounting.' : ''
+  return `${pitchBit}${flatBit}${mountBit}${chosen}`
+}
+
+/** Same text as the visible summary. The adjust controls add that it can be changed. */
+export function mountHint(face) {
+  return `${mountSummary(face)} Change the pitch or the mounting if that is wrong.`
+}
 
 export function sunExposure(medianSunshine) {
   if (!Number.isFinite(medianSunshine) || medianSunshine <= 0) return 'Unknown'
@@ -71,6 +128,7 @@ export function facesFromBuildingInsights(insights) {
 
     const sunshine = median(seg.stats?.sunshineQuantiles)
     const area = Number(seg.stats?.areaMeters2) || 0
+    const roundedPitch = Math.round(pitch * 10) / 10
     return {
       id: `seg-${index}`,
       label: `Face ${index + 1}`,
@@ -79,8 +137,14 @@ export function facesFromBuildingInsights(insights) {
       center: toLatLng(seg.center) ?? (vertices.length ? centroid(vertices) : null),
       areaSquareMetres: area,
       groundAreaSquareMetres: Number(seg.stats?.groundAreaMeters2) || null,
-      pitchDegrees: Math.round(pitch * 10) / 10,
-      azimuthDegrees: Math.round(azimuth),
+      pitchDegrees: roundedPitch,
+      detectedPitchDegrees: roundedPitch,
+      installType: defaultInstallType(roundedPitch),
+      installEdited: false,
+      pitchEdited: false,
+      azimuthDegrees: wrapAzimuth(azimuth),
+      detectedAzimuthDegrees: wrapAzimuth(azimuth),
+      azimuthEdited: false,
       orientation: orientationFromAzimuth(azimuth),
       sunshineKwhM2: sunshine,
       sunExposure: sunExposure(sunshine),
@@ -123,7 +187,13 @@ export function manualFace({ id, vertices, pitchDegrees = 20, azimuthDegrees = 0
     areaSquareMetres: Math.round((plan / Math.cos((pitch * Math.PI) / 180)) * 10) / 10,
     groundAreaSquareMetres: Math.round(plan * 10) / 10,
     pitchDegrees: pitch,
+    detectedPitchDegrees: pitch,
+    installType: defaultInstallType(pitch),
+    installEdited: false,
+    pitchEdited: false,
     azimuthDegrees: azimuth,
+    detectedAzimuthDegrees: azimuth,
+    azimuthEdited: false,
     orientation: orientationFromAzimuth(azimuth),
     sunshineKwhM2: null,
     sunExposure: 'Unknown',
@@ -166,7 +236,32 @@ export function editedOutline(face, vertices) {
 export function editedPitch(face, pitchDegrees) {
   const pitch = Math.min(Math.max(Number(pitchDegrees) || 0, 0), 60)
   const plan = planAreaM2(face.vertices)
-  return { pitchDegrees: pitch, areaSquareMetres: Math.round((plan / Math.cos((pitch * Math.PI) / 180)) * 10) / 10 }
+  const next = {
+    pitchDegrees: pitch,
+    areaSquareMetres: Math.round((plan / Math.cos((pitch * Math.PI) / 180)) * 10) / 10,
+    pitchEdited: true,
+  }
+  // A pitch edit follows the flat/pitched rule until the customer has chosen an install type themselves.
+  if (!face?.installEdited) next.installType = defaultInstallType(pitch)
+  return next
+}
+
+/** Roof slope direction. Does not move the traced outline. */
+export function editedAzimuth(face, deg) {
+  const azimuth = wrapAzimuth(deg)
+  return { azimuthDegrees: azimuth, azimuthEdited: true, orientation: orientationFromAzimuth(azimuth) }
+}
+
+export function resetAzimuth(face) {
+  const azimuth = wrapAzimuth(face?.detectedAzimuthDegrees ?? face?.azimuthDegrees)
+  return { azimuthDegrees: azimuth, azimuthEdited: false, orientation: orientationFromAzimuth(azimuth) }
+}
+
+/** Changes to apply when the customer picks flush or tilt frames. */
+export function editedInstall(face, installType) {
+  void face
+  const install = installType === INSTALL_TILT ? INSTALL_TILT : INSTALL_FLUSH
+  return { installType: install, installEdited: true }
 }
 
 /** Pairs of included faces whose outlines overlap by more than `minM2` (estimated outlines can). */
@@ -269,6 +364,14 @@ export function splitFace(face, a, b) {
     })
     return {
       ...piece,
+      detectedPitchDegrees: face.detectedPitchDegrees ?? face.pitchDegrees,
+      detectedAzimuthDegrees: i === keep ? (face.detectedAzimuthDegrees ?? face.azimuthDegrees) : piece.azimuthDegrees,
+      azimuthDegrees: i === keep ? face.azimuthDegrees : piece.azimuthDegrees,
+      azimuthEdited: i === keep ? Boolean(face.azimuthEdited) : false,
+      orientation: i === keep ? face.orientation : piece.orientation,
+      installType: face.installEdited ? installTypeOf(face) : piece.installType,
+      installEdited: Boolean(face.installEdited),
+      pitchEdited: Boolean(face.pitchEdited),
       included: face.included,
       outlineNote: 'Split along a ridge by you.',
       splitFrom: face.id,

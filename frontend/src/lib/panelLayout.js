@@ -2,7 +2,7 @@
  * Panel layout (D2).
  *
  * Each included roof face is filled on its own grid:
- *   - the outline is shrunk by the edge setback (default 0.4 m),
+ *   - the outline is shrunk by the edge setback (planning default 0.2 m),
  *   - rows start at the gutter and run up the roof, lined up with the gutter,
  *   - panels are portrait or landscape, with the chosen module's real size,
  *     foreshortened by the roof pitch (what you see from above),
@@ -16,9 +16,9 @@ import {
   DC_TO_AC_DERATE,
   DEFAULT_PANEL_ORIENTATION,
   MAX_ADDED_PANEL_SNAP_M,
+  PANEL_CLICK_SLOP_M,
   MAX_RESIDENTIAL_KW,
   MIN_PANELS_PER_FACE,
-  MIN_PANELS_PER_FACE_SMALL,
   MODULE_DIMENSIONS_BY_WATTS,
   MODULE_HEIGHT_M,
   MODULE_WIDTH_M,
@@ -26,19 +26,35 @@ import {
   PANEL_GAP_M,
   ROOF_EDGE_SETBACK_M,
   ROW_GAP_M,
-  SMALL_SYSTEM_PANELS,
-  FLAT_ROOF_MAX_PITCH_DEG,
+  SMALL_GROUP_WARN_PANELS,
   TILT_FRAME_DEG,
   WINTER_NOON_SUN_DEG,
   BLOCK_MAX_ASPECT,
 } from '../config/designerConfig'
 import { centroid, fromLocal, toLatLng, toLocal } from './geo'
-import { bandIntervals, ccw, insetPolygon, polygonInside, polygonsOverlap } from './polygon'
+import { bandIntervals, ccw, insetPolygon, pointInPolygon, polygonInside, polygonsOverlap } from './polygon'
 import { faceAxes, fromFaceUV, toFaceUV } from './roofOutline'
-import { googlePanelSize } from './roofFaces'
+import { googlePanelSize, installTypeOf, isFlatPitch } from './roofFaces'
+import { centreAdjust, checkAdjust } from './arrayAdjust'
 import { stateYield } from './energyModel'
 
 const RAD = Math.PI / 180
+
+/**
+ * Mid-winter solar-noon altitude (degrees) from latitude.
+ * Southern winter is the June solstice (declination +23.44°); northern winter is December.
+ * Rounded to the nearest degree. Null when latitude is missing or the result is not useful.
+ * This is a noon figure only: it ignores hills, trees and the rest of the day.
+ */
+export function winterNoonSunDeg(latitudeDeg) {
+  if (latitudeDeg == null || latitudeDeg === '') return null
+  const lat = Number(latitudeDeg)
+  if (!Number.isFinite(lat) || Math.abs(lat) > 65) return null
+  const declination = lat < 0 ? 23.44 : -23.44
+  const altitude = 90 - Math.abs(lat - declination)
+  if (altitude < 12 || altitude > 75) return null
+  return Math.round(altitude)
+}
 
 /** [ASSUMPTION] Output vs the state average for a roof's pitch and direction (southern hemisphere: north is best). */
 export function orientationFactor(pitchDegrees, azimuthDegrees) {
@@ -53,17 +69,23 @@ export function moduleSize(watts) {
 }
 
 /**
- * How panels sit on a face. Pitched roofs: flush, following the roof.
- * Flat roofs (under FLAT_ROOF_MAX_PITCH_DEG): on tilt frames facing north, with
- * rows spaced so one row does not shade the next at winter noon.
+ * How panels sit on a face.
+ * Tilt frames (the default under FLAT_ROOF_MAX_PITCH_DEG, or when the customer
+ * picks them): 10° frames facing north, rows spaced for the winter shadow.
+ * Flush: panels follow this face's pitch and direction, including on a flat roof
+ * when the customer chose flush.
  */
 export function mountFor(face) {
   const pitch = Number(face?.pitchDegrees) || 0
-  if (pitch < FLAT_ROOF_MAX_PITCH_DEG) return { flat: true, tiltDeg: TILT_FRAME_DEG, azimuthDeg: 0 }
+  if (installTypeOf(face) === 'tilt') return { flat: true, tiltDeg: TILT_FRAME_DEG, azimuthDeg: 0 }
   return { flat: false, tiltDeg: pitch, azimuthDeg: Number(face?.azimuthDegrees) || 0 }
 }
 
-/** Output gain of a tilt frame over Google's flush-mounted estimate on a flat face (1 for pitched faces). */
+/**
+ * Not applied to Google's yields. Kept so older comparisons can see the ratio
+ * of the orientation model; the layout uses the state-average estimate instead
+ * of multiplying Google's flush figure by this.
+ */
 export function tiltFrameGain(face) {
   const m = mountFor(face)
   if (!m.flat) return 1
@@ -77,7 +99,7 @@ export function tiltRowShadowGapM(lengthM, tiltDeg = TILT_FRAME_DEG, sunDeg = WI
 }
 
 /** Panel footprint seen from above: `across` along the gutter, `down` up/down the slope. */
-export function panelFootprint(face, { widthM, heightM, orientation }) {
+export function panelFootprint(face, { widthM, heightM, orientation, sunDeg }) {
   const m = mountFor(face)
   const cosP = Math.cos((m.flat ? m.tiltDeg : Number(face.pitchDegrees) || 0) * RAD)
   const landscape = String(orientation).toLowerCase() === 'landscape'
@@ -85,7 +107,7 @@ export function panelFootprint(face, { widthM, heightM, orientation }) {
   return {
     across: landscape ? heightM : widthM,
     down: slope * cosP,
-    shadowGapM: m.flat ? tiltRowShadowGapM(slope, m.tiltDeg) : 0,
+    shadowGapM: m.flat ? tiltRowShadowGapM(slope, m.tiltDeg, sunDeg ?? WINTER_NOON_SUN_DEG) : 0,
   }
 }
 
@@ -95,6 +117,14 @@ export function panelFootprint(face, { widthM, heightM, orientation }) {
  * down-slope, so rows line up with the drawn gutter even if the azimuth is
  * a degree or two off.
  */
+/** True when a new roof direction would point the rows along a different gutter edge. */
+export function gutterTurned(before, after) {
+  if (!before?.vertices || before.vertices.length < 3 || !after?.vertices || after.vertices.length < 3) return false
+  const a = faceFrame(before).axes.down
+  const b = faceFrame(after).axes.down
+  return a.x * b.x + a.y * b.y < 0.98
+}
+
 export function faceFrame(face) {
   const origin = toLatLng(face.center) ?? centroid(face.vertices)
   const xy = ccw(face.vertices.map((v) => toLocal(origin, toLatLng(v))))
@@ -138,7 +168,7 @@ export function fillFace(face, options = {}) {
   const frame = faceFrame(face)
   const inner = insetPolygon(frame.poly, o.setbackM)
   if (inner.length < 3) return { cells: [], frame, grid: null }
-  const { across: w, down: h, shadowGapM } = panelFootprint(face, o)
+  const { across: w, down: h, shadowGapM } = panelFootprint(face, { ...o, sunDeg: options.sunDeg })
   const stepU = w + o.gapM
   const stepV = h + Math.max(o.rowGapM, shadowGapM)
   const minU = Math.min(...inner.map((p) => p.x))
@@ -177,16 +207,33 @@ export function fillFace(face, options = {}) {
   // Try a few grid offsets along the gutter (and tiny nudges up from it); keep the one that fits most.
   let best = { cells: [], u0: minU, shift: 0 }
   const tries = 8
+  const phases = []
+  for (let i = 0; i < tries; i += 1) phases.push(minU + (i * stepU) / tries)
   for (const shift of [0, 0.01, 0.03, 0.06]) {
     const rows = makeRows(shift)
-    for (let i = 0; i < tries; i += 1) {
-      const u0 = minU + (i * stepU) / tries
+    for (const u0 of phases) {
       const cells = tryOffset(u0, rows)
       if (cells.length > best.cells.length) best = { cells, u0, shift }
     }
   }
 
-  const cells = best.cells.map((c) => {
+  // One phase for every row can miss a spot on a tapering face: the wide row
+  // and the narrow row often want different alignments. Each row may shift
+  // along the gutter on its own when that fits more panels. The setback check
+  // is unchanged.
+  const phasedRows = makeRows(best.shift)
+  let chosen = best.cells
+  for (const row of phasedRows) {
+    const have = chosen.filter((c) => c.row === row.r)
+    let bestRow = have
+    for (const u0 of phases) {
+      const cells = tryOffset(u0, [row])
+      if (cells.length > bestRow.length) bestRow = cells
+    }
+    if (bestRow.length > have.length) chosen = [...chosen.filter((c) => c.row !== row.r), ...bestRow]
+  }
+
+  const cells = chosen.map((c) => {
     const ctr = { x: (c.uv[0].x + c.uv[2].x) / 2, y: (c.uv[0].y + c.uv[2].y) / 2 }
     return {
       id: `${face.id}:r${c.row}:c${c.col}`,
@@ -205,6 +252,206 @@ export function fillFace(face, options = {}) {
 /** Kept for older callers: the panel spots on one face. */
 export function gridPanelsForFace(face, opts = {}) {
   return fillFace(face, opts).cells
+}
+
+function uvOnFace(frame, item, faceId) {
+  // uv is stored in that panel's own face frame. Another face's numbers are not this frame.
+  if (item?.faceId === faceId && item?.uv?.length >= 3 && item.uv.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) {
+    return item.uv.map((p) => ({ x: p.x, y: p.y }))
+  }
+  if (item?.corners?.length >= 3) {
+    return item.corners.map((c) => toFaceUV(toLocal(frame.origin, toLatLng(c)), frame.axes))
+  }
+  return null
+}
+
+function axisRange(poly) {
+  const xs = poly.map((p) => p.x)
+  const ys = poly.map((p) => p.y)
+  return { u0: Math.min(...xs), u1: Math.max(...xs), v0: Math.min(...ys), v1: Math.max(...ys) }
+}
+
+/** True when two gutter-aligned panels sit in each other's tilt-frame shadow. */
+function shadesRow(a, b, shadowGap) {
+  const A = axisRange(a)
+  const B = axisRange(b)
+  if (Math.min(A.u1, B.u1) - Math.max(A.u0, B.u0) <= 0.05) return false
+  const vGap = A.v0 >= B.v1 - 1e-6 ? A.v0 - B.v1 : B.v0 >= A.v1 - 1e-6 ? B.v0 - A.v1 : 0
+  return vGap > 0.001 && vGap < shadowGap - 1e-6
+}
+
+/**
+ * Why a full panel rectangle is not usable on this face right now, or ''.
+ * `blocked` and `obstacleUv` are polygons in the same face frame.
+ */
+export function panelSlotStatus(face, uv, blocked, { setbackM = ROOF_EDGE_SETBACK_M, gapM = PANEL_GAP_M, shadowGapM = 0, obstacleUv = [] } = {}) {
+  const frame = faceFrame(face)
+  if (!uv || uv.length < 3) return 'That spot is not an open panel position.'
+  if (!polygonInside(uv, frame.poly, setbackM)) return `That spot crosses the roof edge or the ${setbackM} m setback.`
+  const gap = Math.max(gapM, 0.01)
+  for (const b of blocked) {
+    if (!b || b.length < 3) continue
+    if (polygonsOverlap(uv, b, { gap })) return 'That spot overlaps a panel already on the roof.'
+    if (shadowGapM > gap && shadesRow(uv, b, shadowGapM)) return 'That spot sits in the tilt-frame row gap.'
+  }
+  for (const ob of obstacleUv) {
+    if (ob?.length >= 3 && polygonsOverlap(uv, ob, { gap: 0 })) return 'That spot is inside a no-go area.'
+  }
+  return ''
+}
+
+function slotCell(face, frame, uv, id, yearlyAcKwh) {
+  const ctr = { x: uv.reduce((s, p) => s + p.x, 0) / uv.length, y: uv.reduce((s, p) => s + p.y, 0) / uv.length }
+  return {
+    id,
+    faceId: face.id,
+    row: 1000,
+    col: 0,
+    extra: true,
+    uv,
+    uvCenter: ctr,
+    center: frame.toLatLng(ctr),
+    corners: uv.map(frame.toLatLng),
+    yearlyAcKwh,
+    source: 'grid',
+  }
+}
+
+/**
+ * Spare panel spots for one face, checked against the panels where they are now.
+ * Seeds (unused grid cells, removed cells, vacated footprints) keep their ids when
+ * they still fit. A scan then adds positions the gutter grid never generated.
+ */
+export function spareSlotsForFace(face, { seeds = [], blockedItems = [], moduleWatts, orientation, setbackM, gapM, rowGapM, sunDeg, obstacles = [] } = {}) {
+  if (!face?.vertices || face.vertices.length < 3) return []
+  const frame = faceFrame(face)
+  const o = layoutOpts({ moduleWatts, orientation, setbackM, gapM, rowGapM })
+  const { across: w, down: h, shadowGapM } = panelFootprint(face, { ...o, sunDeg })
+  const toUv = (item) => uvOnFace(frame, item, face.id)
+  const blocked = blockedItems.map(toUv).filter((p) => p?.length >= 3)
+  const obstacleUv = (obstacles ?? [])
+    .filter((ob) => ob?.vertices?.length >= 3)
+    .map((ob) => ob.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))
+  const opts = { setbackM: o.setbackM, gapM: o.gapM, shadowGapM, obstacleUv }
+  const kept = []
+  const taken = [...blocked]
+  const accept = (uv, make) => {
+    if (panelSlotStatus(face, uv, taken, opts)) return false
+    taken.push(uv)
+    kept.push(make(uv))
+    return true
+  }
+  for (const seed of seeds) {
+    const uv = toUv(seed)
+    if (!uv) continue
+    accept(uv, () => ({ ...seed, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng({ x: uv.reduce((s, p) => s + p.x, 0) / uv.length, y: uv.reduce((s, p) => s + p.y, 0) / uv.length }) }))
+  }
+  // Search the face box, not the mitred inset. A stepped outline's inset can
+  // drop a bay that still has room for one panel inside the setback.
+  const poly = frame.poly
+  if (!poly || poly.length < 3) return kept
+  const minU = Math.min(...poly.map((p) => p.x)) + o.setbackM
+  const maxU = Math.max(...poly.map((p) => p.x)) - o.setbackM
+  const minV = Math.min(...poly.map((p) => p.y)) + o.setbackM
+  const maxV = Math.max(...poly.map((p) => p.y)) - o.setbackM
+  let step = 0.4
+  const budget = 2500
+  while (step > 0 && ((maxU - minU) / step) * ((maxV - minV) / step) > budget) step *= 1.25
+  const yearly = seeds.find((s) => s.yearlyAcKwh > 0)?.yearlyAcKwh ?? seeds[0]?.faceMean ?? 0
+  const tryAt = (u, v) => {
+    if (u < minU - 0.35 || v < minV - 0.35 || u + w > maxU + 0.35 || v + h > maxV + 0.35) return false
+    const uv = [
+      { x: u, y: v },
+      { x: u + w, y: v },
+      { x: u + w, y: v + h },
+      { x: u, y: v + h },
+    ]
+    const id = `${face.id}:open:${Math.round(u * 10)}:${Math.round(v * 10)}`
+    if (kept.some((c) => c.id === id)) return true
+    return accept(uv, () => slotCell(face, frame, uv, id, yearly))
+  }
+  let opened = 0
+  for (let top = maxV; top - h >= minV - 1e-9 && opened < 12; top -= step) {
+    const v = top - h
+    for (let u = minU; u + w <= maxU + 1e-6 && opened < 12; u += step) {
+      if (tryAt(u, v)) {
+        opened += 1
+        continue
+      }
+      const center = { x: u + w / 2, y: v + h / 2 }
+      if (!pointInPolygon(center, poly)) continue
+      if (!panelSlotStatus(face, [
+        { x: u, y: v },
+        { x: u + w, y: v },
+        { x: u + w, y: v + h },
+        { x: u, y: v + h },
+      ], taken, opts).includes('setback')) continue
+      for (const du of [-0.15, 0.15, -0.3, 0.3]) {
+        for (const dv of [-0.15, 0.15, -0.3, 0.3]) {
+          if (tryAt(u + du, v + dv)) opened += 1
+        }
+      }
+    }
+  }
+  return kept
+}
+
+function liveSpareSlots({
+  faces,
+  placed,
+  grid,
+  chosenIds,
+  removedCells,
+  pinned,
+  wanted,
+  maxByKw,
+  moduleWatts,
+  orientation,
+  setbackM,
+  gapM,
+  rowGapM,
+  sunDeg,
+  obstacles,
+}) {
+  const spares = []
+  for (const face of faces ?? []) {
+    const onFace = placed.filter((p) => p.faceId === face.id)
+    const others = placed.filter((p) => p.faceId !== face.id)
+    const unused = grid.filter((c) => c.faceId === face.id && !chosenIds.has(c.id))
+    const removed = (removedCells ?? []).filter((c) => c.faceId === face.id)
+    const vacated = onFace
+      .map((p) => grid.find((c) => c.id === p.id))
+      .filter(Boolean)
+      .map((c) => ({ ...c, id: `${face.id}:open:${c.row}:${c.col}`, extra: true }))
+    const seeds = [...unused, ...removed, ...vacated]
+    const found = spareSlotsForFace(face, {
+      seeds,
+      blockedItems: [...onFace, ...others],
+      moduleWatts,
+      orientation,
+      setbackM,
+      gapM,
+      rowGapM,
+      sunDeg,
+      obstacles,
+    })
+    spares.push(...found)
+  }
+  const removedIds = new Set((removedCells ?? []).map((cell) => cell.id))
+  const must = spares.filter((s) => pinned.has(s.id) && !removedIds.has(s.id))
+  const optional = spares.filter((s) => !pinned.has(s.id) && !removedIds.has(s.id))
+  const held = spares.filter((s) => removedIds.has(s.id))
+  const limit = maxByKw === Infinity ? wanted : Math.min(wanted, maxByKw)
+  let budget = Math.max(0, limit - placed.length)
+  const added = []
+  for (const spot of [...must, ...optional]) {
+    if (budget <= 0) break
+    added.push(spot)
+    budget -= 1
+  }
+  const addedIds = new Set(added.map((s) => s.id))
+  const left = [...must, ...optional, ...held].filter((s) => !addedIds.has(s.id))
+  return { panels: [...placed, ...added], spares: left }
 }
 
 const asPoly = (origin, latLngs) => latLngs.map((p) => toLocal(origin, toLatLng(p)))
@@ -245,7 +492,12 @@ export function layoutPanels({
   obstacles = [],
   maxKw = MAX_RESIDENTIAL_KW,
   minPanelsPerFace,
+  latitude,
+  faceArrays = {},
 }) {
+  const sunFromLatitude = winterNoonSunDeg(latitude)
+  const sunDeg = sunFromLatitude ?? WINTER_NOON_SUN_DEG
+  const sunFromSite = sunFromLatitude != null
   const included = (faces ?? []).filter((f) => f.included && f.vertices?.length >= 3)
   const google = googlePanelSize(insights)
   const solarPanels = insights?.solarPotential?.solarPanels ?? []
@@ -269,21 +521,21 @@ export function layoutPanels({
   let blockedByObstacles = 0
   const removedCells = []
   for (const face of included) {
-    const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM })
-    // Yield from Google's nearest panel spot on this segment, else the segment mean, else the state average.
-    // Google's figures are for flush panels; flat faces get the tilt-frame gain.
-    const gain = tiltFrameGain(face)
+    const { cells, frame } = fillFace(face, { moduleWatts, orientation, setbackM, gapM, rowGapM, sunDeg })
+    const mount = mountFor(face)
+    // Google's yearlyEnergyDcKwh is for flush panels on that roof face.
+    // Tilt frames do not get those figures multiplied by a generic uplift.
+    // Their output is the state-average orientation model, labelled as an estimate.
     const gp =
-      face.source === 'solar-api' && Number.isInteger(face.segmentIndex)
+      !mount.flat && face.source === 'solar-api' && Number.isInteger(face.segmentIndex)
         ? solarPanels
             .filter((p) => p.segmentIndex === face.segmentIndex && toLatLng(p.center))
             .map((p) => ({
               uv: toFaceUV(toLocal(frame.origin, toLatLng(p.center)), frame.axes),
-              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE * gain,
+              ac: Math.max(0, Number(p.yearlyEnergyDcKwh) || 0) * scale * DC_TO_AC_DERATE,
             }))
         : []
     const mean = gp.length ? gp.reduce((s, p) => s + p.ac, 0) / gp.length : null
-    const mount = mountFor(face)
     const fallback = (moduleWatts / 1000) * yieldKw * orientationFactor(mount.tiltDeg, mount.azimuthDeg)
     let kept = 0
     for (const cell of cells) {
@@ -365,25 +617,32 @@ export function layoutPanels({
   const eligibleTotal = (min) =>
     pinnedCells.length + [...byFace.values()].reduce((t, f) => t + (manual(f) || f.elig.length >= min ? f.elig.length : 0), 0)
   const explicitMin = Math.round(Number(minPanelsPerFace) || 0) > 0 ? Math.round(Number(minPanelsPerFace)) : null
-  let minPer = explicitMin ?? (wanted <= SMALL_SYSTEM_PANELS ? MIN_PANELS_PER_FACE_SMALL : MIN_PANELS_PER_FACE)
-  let available = eligibleTotal(explicitMin ?? MIN_PANELS_PER_FACE)
-  if (available < wanted && minPer < (explicitMin ?? MIN_PANELS_PER_FACE)) available = eligibleTotal(minPer)
+  let minPer = explicitMin ?? MIN_PANELS_PER_FACE
+  let available = eligibleTotal(minPer)
   if (available === 0 && all.length > 0) {
     minPer = 1
     available = all.length
-    notes.push('Only small roof areas are available, so panels sit in small groups.')
   }
   const smallFaces = faceStats.filter((s) => {
     const f = byFace.get(s.faceId)
     return !manual(f) && f.elig.length > 0 && f.elig.length < minPer
   })
 
+  const spatialCount = available
   let count = Math.min(wanted, available)
   let capped = false
+  let limitedBy = wanted > spatialCount ? 'space' : 'target'
   if (count > maxByKw) {
     count = maxByKw
     capped = true
-    notes.push(`Capped at ${maxByKw} panels (${maxKw} kW) - the usual limit for a home connection. Check with your network.`)
+    limitedBy = 'planning'
+    notes.push(
+      `The roof fits ${spatialCount} panels inside the setbacks. The planning size is ${maxKw} kW (${maxByKw} panels), so the design stops there. That size is a planning assumption you can change. It is not a statement of what your network allows.`,
+    )
+  } else if (Number.isFinite(wanted) && wanted > spatialCount) {
+    notes.push(
+      `This grid has ${spatialCount} spots inside the setbacks on the faces you ticked. Your target asked for ${wanted}. That count is not a proof another arrangement could fit more. The setbacks are unchanged.`,
+    )
   }
   if (blockedByObstacles) notes.push(`${blockedByObstacles} spot${blockedByObstacles === 1 ? '' : 's'} left clear around no-go areas.`)
   if (overlapDropped) notes.push(`${overlapDropped} spot${overlapDropped === 1 ? '' : 's'} skipped where two faces overlap.`)
@@ -442,31 +701,265 @@ export function layoutPanels({
     return out
   }
   const panels = chosen.map(strip)
-  const flatIds = new Set(included.filter((f) => mountFor(f).flat).map((f) => f.id))
-  if (panels.some((p) => flatIds.has(p.faceId)))
+  const tiltFaces = included.filter((f) => mountFor(f).flat && panels.some((p) => p.faceId === f.id))
+  const assumptions = []
+  if (tiltFaces.length) {
+    const onPitched = tiltFaces.some((f) => !isFlatPitch(f.pitchDegrees))
+    const sunText = sunFromSite
+      ? `about ${sunDeg}° at this latitude`
+      : `about ${WINTER_NOON_SUN_DEG}° (a Melbourne/Sydney figure, because this design has no latitude)`
     notes.push(
-      `Flat roof: panels are on ${TILT_FRAME_DEG}° tilt frames facing north, with rows spaced so they do not shade each other in winter.`,
+      `Panels are drawn on ${TILT_FRAME_DEG}° tilt frames facing north. This is a layout sketch, not a structural design${onPitched ? ', and it is not an approved way to mount panels on a pitched roof' : ''}. Yearly output on those faces is an estimate from the state average and that frame tilt — not Google's flush-panel figure, and not a measured gain. Row gaps use the mid-winter noon sun (${sunText}) and ignore hills, trees and the rest of the day.`,
     )
-  const candidates = [...panels, ...all.filter((c) => !chosenIds.has(c.id)).map(strip)]
-  const sources = new Set(panels.map((p) => p.source))
-  return {
-    panels,
-    candidates,
-    available,
+    assumptions.push(
+      { id: 'tilt-frame', value: TILT_FRAME_DEG, text: `${TILT_FRAME_DEG}° frames facing north. Layout sketch only, not a structural approval.` },
+      { id: 'tilt-yield', text: 'State-average sun at the frame tilt. Google flush yields are not boosted.' },
+      {
+        id: 'winter-sun',
+        value: sunDeg,
+        source: sunFromSite ? 'latitude' : 'fallback',
+        text: sunFromSite
+          ? `Mid-winter noon sun about ${sunDeg}° from latitude. Not a shade study.`
+          : `Mid-winter noon sun ${WINTER_NOON_SUN_DEG}° because latitude is missing. Not a shade study.`,
+      },
+    )
+  }
+  const placed = applyFaceArrays(panels, included, faceArrays, { setbackM: layoutOpts({ setbackM }).setbackM, obstacles, notes })
+  const live = liveSpareSlots({
+    faces: included,
+    placed,
+    grid: all,
+    chosenIds,
+    removedCells,
+    pinned,
+    wanted,
     maxByKw,
-    count,
+    moduleWatts,
+    orientation,
+    setbackM,
+    gapM,
+    rowGapM,
+    sunDeg,
+    obstacles,
+  })
+  const panelsNow = live.panels
+  const countNow = panelsNow.length
+  const spatialNow = countNow + live.spares.length
+  const usedSetback = layoutOpts({ setbackM }).setbackM
+  for (const stat of faceStats) {
+    const placedHere = panelsNow.filter((p) => p.faceId === stat.faceId).length
+    const spareHere = live.spares.filter((p) => p.faceId === stat.faceId).length
+    const name = stat.label ?? stat.faceId
+    if (stat.fits === 0 && spareHere === 0) {
+      notes.push(
+        `${name}: no full panel fits inside the ${usedSetback} m planning setback. That inset is not a code clearance, and it is not the only reason a face can stay empty.`,
+      )
+    } else if (placedHere === 0 && stat.fits + spareHere > 0) {
+      notes.push(
+        `${name}: ${stat.fits + spareHere} spot${stat.fits + spareHere === 1 ? '' : 's'} fit, and none are in the current target. Blue outlines show them. Raising the target uses them without moving panels already placed.`,
+      )
+    }
+  }
+  if (wanted > spatialNow && spatialNow >= 0) {
+    notes.push(
+      `There are ${spatialNow} spots that fit with the panels where they are now. Your target asked for ${wanted}. Setbacks, row gaps and no-go areas are unchanged.`,
+    )
+  }
+  const candidates = [...panelsNow, ...live.spares]
+  const sources = new Set(panelsNow.map((p) => p.source))
+  return {
+    panels: panelsNow,
+    candidates,
+    available: Math.max(available, spatialNow),
+    maxByKw,
+    count: countNow,
     capped,
-    dcKw: (count * moduleWatts) / 1000,
-    annualAcKwh: panels.reduce((s, p) => s + p.yearlyAcKwh, 0),
+    spatialCount: spatialNow,
+    planningMaxPanels: Number.isFinite(maxByKw) ? maxByKw : null,
+    planningKw: maxKw,
+    limitedBy,
+    dcKw: (countNow * moduleWatts) / 1000,
+    annualAcKwh: panelsNow.reduce((s, p) => s + (p.yearlyAcKwh || 0), 0),
     source: sources.size === 0 ? 'none' : sources.size > 1 ? 'mixed' : [...sources][0],
     googleWatts: google.watts,
     faceStats,
     notes,
+    assumptions,
+    sunDeg,
+    sunSource: sunFromSite ? 'latitude' : 'fallback',
     blockedByObstacles,
     removedCells,
     minPanelsPerFace: minPer,
     smallFaces: smallFaces.map((f) => f.label ?? f.faceId),
   }
+}
+
+/**
+ * What a panel drag on the map should do.
+ * Google turns a shaky click into a short drag and then skips the click, so a
+ * small move removes the panel. A move only sticks when the drop is closer to
+ * a free slot than to where the panel started (past the halfway line) and the
+ * drag was longer than a click. Anything else snaps back.
+ * Returns { type: 'remove' | 'move' | 'cancel', cell? }.
+ */
+export function resolvePanelDrag(origin, drop, candidates, { exclude = [], maxM = MAX_ADDED_PANEL_SNAP_M, clickSlopM = PANEL_CLICK_SLOP_M } = {}) {
+  const o = toLatLng(origin)
+  const d = toLatLng(drop)
+  if (!o || !d) return { type: 'cancel' }
+  const moved = toLocal(o, d)
+  const dist = Math.hypot(moved.x, moved.y)
+  if (dist < clickSlopM) return { type: 'remove' }
+  const cell = snapToCell(candidates, d, { exclude, maxM })
+  if (!cell?.center) return { type: 'cancel' }
+  const at = toLocal(d, cell.center)
+  if (Math.hypot(at.x, at.y) < dist) return { type: 'move', cell }
+  return { type: 'cancel' }
+}
+
+/**
+ * kW cap used by the layout.
+ * An explicit panel target is allowed to exceed the planning size, up to the
+ * roof fit. The planning size stays what the customer typed. It is not a
+ * hidden stopper and it is not a network approval.
+ */
+export function sizingLimitKw({ panelCount, moduleWatts, planningKw } = {}) {
+  const planning = Number(planningKw) > 0 ? Number(planningKw) : MAX_RESIDENTIAL_KW
+  const n = Number(panelCount)
+  const watts = Number(moduleWatts)
+  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(watts) || watts <= 0) return planning
+  return Math.max(planning, (n * watts) / 1000)
+}
+
+/**
+ * How many panels to ask for.
+ * No chosen target: every valid spot. The planning size and the household suggestion are not caps.
+ * A chosen target is that number, including one that matches the suggestion.
+ */
+export function resolvePlacementCount({ panelCount } = {}) {
+  if (panelCount != null && panelCount !== '') {
+    const explicit = Number(panelCount)
+    if (Number.isFinite(explicit) && explicit >= 0) return Math.round(explicit)
+  }
+  return Number.POSITIVE_INFINITY
+}
+
+/** Planning size limits only an explicit target. An unset layout is the full valid roof. */
+export function placementMaxKw({ panelCount, moduleWatts, planningKw } = {}) {
+  if (panelCount == null || panelCount === '') return Number.POSITIVE_INFINITY
+  return sizingLimitKw({ panelCount, moduleWatts, planningKw })
+}
+
+/** Whether one grid cell can be added beside the panels already on the roof. */
+export function canAddPanel({ panels, cell, obstacles = [], face = null, setbackM = ROOF_EDGE_SETBACK_M } = {}) {
+  if (!cell?.corners || !cell?.center) return { ok: false, reason: 'That spot is not an open panel position.' }
+  if ((panels ?? []).some((p) => p.id === cell.id)) return { ok: false, reason: 'A panel is already on that spot.' }
+  if (face) {
+    const frame = faceFrame(face)
+    const uv = cell.corners?.length >= 3 ? cell.corners.map((c) => toFaceUV(toLocal(frame.origin, toLatLng(c)), frame.axes)) : cell.uv
+    const { shadowGapM } = panelFootprint(face, { ...layoutOpts({ setbackM }), sunDeg: undefined })
+    const blocked = (panels ?? []).map((p) => uvOnFace(frame, p, face.id)).filter((p) => p?.length >= 3)
+    const obstacleUv = (obstacles ?? [])
+      .filter((ob) => ob?.vertices?.length >= 3)
+      .map((ob) => ob.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))
+    const status = panelSlotStatus(face, uv, blocked, { setbackM, shadowGapM, obstacleUv })
+    if (status) return { ok: false, reason: status }
+  }
+  const origin = panels?.[0]?.center ?? cell.center
+  const cellPoly = asPoly(origin, cell.corners)
+  const cellGeom = { xy: cellPoly, ...radius(cellPoly) }
+  for (const p of panels ?? []) {
+    const xy = asPoly(origin, p.corners)
+    const geom = { xy, ...radius(xy) }
+    if (near(cellGeom, geom, 0) && polygonsOverlap(cellPoly, xy, { gap: 0.01 })) {
+      return { ok: false, reason: 'That spot overlaps a panel already on the roof.' }
+    }
+  }
+  const obs = (obstacles ?? []).filter((o) => o?.vertices?.length >= 3).map((o) => asPoly(origin, o.vertices))
+  if (obs.some((ob) => polygonsOverlap(cellPoly, ob, { gap: 0 }))) {
+    return { ok: false, reason: 'That spot is inside a no-go area.' }
+  }
+  return { ok: true, reason: '' }
+}
+
+/**
+ * Design patch for clicking one empty panel spot.
+ * Existing panel ids stay. A face that has already been slid or rotated does
+ * not drag the new panel with it.
+ */
+export function nextPanelAdd({ placedIds, cell, panels, panelCount, faceArrays, removedIds, obstacles, face, setbackM } = {}) {
+  const decision = canAddPanel({ panels, cell, obstacles, face, setbackM })
+  if (!decision.ok) return { ok: false, patch: { placementNote: decision.reason } }
+  const arrays = { ...(faceArrays ?? {}) }
+  const adj = arrays[cell.faceId]
+  const active = adj && ((Number(adj.dxM) || 0) !== 0 || (Number(adj.dyM) || 0) !== 0 || (Number(adj.rotationDeg) || 0) !== 0)
+  if (active && !Array.isArray(adj.panelIds)) {
+    arrays[cell.faceId] = {
+      ...adj,
+      panelIds: (panels ?? []).filter((p) => p.faceId === cell.faceId).map((p) => p.id),
+    }
+  }
+  return {
+    ok: true,
+    patch: {
+      removedPanelIds: (removedIds ?? []).filter((x) => x !== cell.id),
+      pinnedPanelIds: [...new Set([...(placedIds ?? []), cell.id])],
+      panelCount: (Number(panelCount) || 0) + 1,
+      placementNote: null,
+      faceArrays: arrays,
+    },
+  }
+}
+
+function applyFaceArrays(panels, faces, faceArrays, { setbackM, obstacles, notes }) {
+  const out = []
+  const seen = new Set()
+  for (const face of faces ?? []) {
+    const mine = panels.filter((p) => p.faceId === face.id)
+    mine.forEach((p) => seen.add(p.id))
+    const adj = faceArrays?.[face.id]
+    const active = adj && ((Number(adj.dxM) || 0) !== 0 || (Number(adj.dyM) || 0) !== 0 || (Number(adj.rotationDeg) || 0) !== 0)
+    const group = !active ? [] : Array.isArray(adj.panelIds) ? mine.filter((p) => adj.panelIds.includes(p.id)) : mine
+    if (!mine.length || !group.length) {
+      out.push(...mine)
+      continue
+    }
+    const verdict = assessFaceArray(face, group, adj, { setbackM, obstacles })
+    if (!verdict.ok) {
+      notes.push(`${face.label}: the array alignment was not applied. ${verdict.reason} The panels stay on the grid.`)
+      out.push(...mine)
+      continue
+    }
+    const frame = faceFrame(face)
+    const moved = new Map(
+      group.map((p, i) => {
+        const uv = verdict.uv[i]
+        const ctr = { x: uv.reduce((s, q) => s + q.x, 0) / uv.length, y: uv.reduce((s, q) => s + q.y, 0) / uv.length }
+        return [p.id, { ...p, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng(ctr) }]
+      }),
+    )
+    out.push(...mine.map((p) => moved.get(p.id) ?? p))
+  }
+  for (const p of panels) if (!seen.has(p.id)) out.push(p)
+  return out
+}
+
+/** In-plane translation that centres the array, or a reason there is no valid centre. */
+export function proposeCentre(face, gridPanels, { setbackM = ROOF_EDGE_SETBACK_M, rotationDeg = 0 } = {}) {
+  const frame = faceFrame(face)
+  const inner = insetPolygon(frame.poly, setbackM)
+  const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
+  return centreAdjust(polys, inner, { rotationDeg, outer: frame.poly, clearance: setbackM })
+}
+
+/** Check an in-plane move against the setback and no-go areas. Does not change yield. */
+export function assessFaceArray(face, gridPanels, adjust, { setbackM = ROOF_EDGE_SETBACK_M, obstacles = [] } = {}) {
+  const frame = faceFrame(face)
+  const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
+  const obs = (obstacles ?? [])
+    .filter((o) => o?.vertices?.length >= 3)
+    .map((o) => o.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))
+  // Same rule as placement: clearance from the outline, not a second inset.
+  return checkAdjust(polys, frame.poly, obs, adjust, setbackM)
 }
 
 /** Nearest free panel spot to a lat/lng (for drag-and-snap), or null if none is close. */
@@ -598,7 +1091,7 @@ export function validateLayout(layout, faces, { setbackM = ROOF_EDGE_SETBACK_M, 
     const onObstacle = geo.filter((g) => obs.some((ob) => polygonsOverlap(g.xy, ob))).length
     if (onObstacle) issues.push({ level: 'error', message: `${onObstacle} panel${onObstacle === 1 ? '' : 's'} sit on a no-go area.` })
   }
-  const min = minPanelsPerFace ?? layout?.minPanelsPerFace ?? MIN_PANELS_PER_FACE
+  const min = minPanelsPerFace ?? SMALL_GROUP_WARN_PANELS
   const perFace = new Map()
   for (const p of panels) perFace.set(p.faceId, (perFace.get(p.faceId) ?? 0) + 1)
   for (const [faceId, n] of perFace) {

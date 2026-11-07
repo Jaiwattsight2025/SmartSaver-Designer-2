@@ -57,6 +57,18 @@ describe('refineFacesWithDsm', () => {
     expect(out[3]).toBe(faces[3])
   })
 
+  it('keeps the estimate when the 3D trace was rejected, and says why', () => {
+    const faces = [face('a', 0, { outlineConfidence: 'medium', outlineNote: 'Estimated.' })]
+    const traced = {
+      faces: [{ index: 0, confidence: 'low', vertices: sq, metrics: { rejectReason: '3D outline left out: it was about 3.9× this face and may include the next building.' } }],
+    }
+    const { faces: out, refined } = refineFacesWithDsm(faces, traced)
+    expect(refined).toBe(0)
+    expect(out[0].vertices).toBe(faces[0].vertices)
+    expect(out[0].outlineShape).toBe('rect')
+    expect(out[0].dsmRejectNote).toMatch(/next building/)
+  })
+
   it('returns the faces untouched without a trace', () => {
     const faces = [face('a', 0)]
     expect(refineFacesWithDsm(faces, null)).toEqual({ faces, refined: 0 })

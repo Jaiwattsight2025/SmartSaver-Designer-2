@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { markOtherRoofs, seedFace, splitMainRoof, OTHER_ROOF_LABEL } from '../mainRoof'
 import { flagNonRoofFaces, verandahSkirts } from '../nonRoof'
 import { manualFace } from '../roofFaces'
-import { elongationCost, layoutPanels } from '../panelLayout'
+import { elongationCost, layoutPanels, validateLayout } from '../panelLayout'
 import { offset } from '../geo'
 
 const o = { lat: -37.8665, lng: 145.1012 }
@@ -56,10 +56,42 @@ describe('main roof filter', () => {
     expect([...s.other.keys()].sort()).toEqual([5, 6])
     expect(s.other.get(5)).toMatch(/separate building/)
   })
-  it('does nothing without 3D data or when the point is off every roof', () => {
+  it('does nothing when the point is off every roof', () => {
     const faces = [face(0, -5, 0, 10, 4)]
-    expect(splitMainRoof(faces, [], at(0, 2))).toBe(null)
+    expect(splitMainRoof(faces, [], at(100, 100))).toBe(null)
     expect(markOtherRoofs(faces, [join(0, 1)], at(100, 100)).faces).toBe(faces)
+  })
+  it('keeps a touching face and drops a separate block even with no 3D joins (Labassa, no trace)', () => {
+    // Face 1 shares an edge with the seed. Face 5 is a separate block 15 m away.
+    // Face 4 sits 0.4 m off face 1, so a thin tracing gap still counts as one roof.
+    const faces = [
+      face(0, -5, 0, 10, 4, { outlineShape: 'rectangle' }),
+      face(1, -5, -4, 10, 4, { outlineShape: 'rectangle' }),
+      face(4, 5.4, 0, 6, 4, { outlineShape: 'box' }),
+      face(5, 20, 0, 8, 4, { outlineShape: 'box', outlineConfidence: 'medium' }),
+    ]
+    const { faces: out, other } = markOtherRoofs(faces, [], at(0, 2))
+    expect(other).toBe(1)
+    expect(out.find((f) => f.segmentIndex === 1).included).toBe(true)
+    expect(out.find((f) => f.segmentIndex === 4).included).toBe(true)
+    const far = out.find((f) => f.segmentIndex === 5)
+    expect(far.otherRoof).toBe(true)
+    expect(far.included).toBe(false)
+    expect(far.otherRoofReason).toMatch(/separate building/)
+    const layout = layoutPanels({ insights: null, faces: out, panelCount: 40, moduleWatts: 440, state: 'VIC' })
+    expect(layout.panels.some((p) => p.faceId === far.id)).toBe(false)
+    expect(layout.panels.length).toBeGreaterThan(0)
+    expect(validateLayout(layout, out).ok).toBe(true)
+  })
+  it('still drops an estimate-only neighbour when the 3D joins only cover the house', () => {
+    const faces = [
+      face(0, -5, 0, 10, 4),
+      face(1, -5, -4, 10, 4),
+      face(5, 18, 0, 8, 4, { outlineShape: 'box', outlineConfidence: 'medium' }),
+    ]
+    const out = markOtherRoofs(faces, [join(0, 1)], at(0, 2)).faces
+    expect(out.find((f) => f.segmentIndex === 5).included).toBe(false)
+    expect(out.find((f) => f.segmentIndex === 0).included).toBe(true)
   })
   it('never touches a face the user drew or edited', () => {
     const faces = [face(0, -5, 0, 10, 4), face(1, -5, 30, 10, 4, { outlineEdited: true }), face(2, -5, 40, 10, 4, { source: 'manual' })]
