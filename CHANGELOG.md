@@ -1,5 +1,10 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Place panels on every ticked face
+
+- With no target chosen, the layout uses every spot that fits, up to the planning size. It no longer stops at the 6.6 kW suggestion when other ticked faces still have room. The suggestion stays a separate button. A target the customer set, including 15, is kept when the planning size changes.
+- A spare spot is checked in its own roof face. Another face’s local coordinates are not reused, so a real grid spot stays available beside panels on a different face. Raising or lowering the target keeps the panels already placed.
+
 ## [designer-v2] – 2026-11-07 – Planning setback default 0.2 m
 
 - A new design and a reset use a 0.2 m inset from the drawn roof edge. That inset is a planning assumption, not an installation approval or a building-code clearance. A saved number, including 0.4 from an older session, is kept. The field stays editable from 0.2 m to 1.5 m.

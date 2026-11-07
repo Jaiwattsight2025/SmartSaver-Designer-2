@@ -71,11 +71,18 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
 
   const maxCount = layout.spatialCount ?? layout.available
   const planningKw = designChoices.planningKw ?? MAX_RESIDENTIAL_KW
-  const setCount = (n) =>
+  const setCount = (n) => {
+    const next = Math.max(0, Math.min(maxCount, Math.round(n) || 0))
+    const current = layout.panels.map((panel) => panel.id)
+    const userPins = designChoices.pinnedPanelIds ?? []
+    const preferred = [...userPins.filter((id) => current.includes(id)), ...current.filter((id) => !userPins.includes(id))]
+    const pinned = next >= current.length ? [...new Set([...userPins, ...current])] : preferred.slice(0, next)
     actions.updateDesign({
-      panelCount: Math.max(0, Math.min(maxCount, Math.round(n) || 0)),
+      panelCount: next,
+      pinnedPanelIds: pinned,
       placementNote: null,
     })
+  }
 
   return (
     <div className="control-stack">
@@ -319,14 +326,14 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         aria-label="Number of panels"
       />
       <small className="hint">
-        Up to {layout.available} panels fit on the faces you picked.{' '}
+        Up to {layout.available} panels fit on the faces you picked. Until you set a target, those spots are used, up to the planning size.{' '}
         {profile?.recommendedSolarKw
           ? `Energy Insights suggested ${profile.recommendedSolarKw} kW = ${suggestedPanels} panels.`
           : `Suggested for your use: ${suggestedPanels} panels.`}
         {wanted > layout.available && ` That is more than fits, so we placed ${layout.available}.`}
       </small>
       {layout.count !== Math.min(suggestedPanels, layout.available) && (
-        <button type="button" className="link-button" onClick={() => actions.updateDesign({ panelCount: null })}>
+        <button type="button" className="link-button" onClick={() => actions.updateDesign({ panelCount: suggestedPanels })}>
           Use suggested size
         </button>
       )}

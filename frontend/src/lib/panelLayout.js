@@ -254,8 +254,9 @@ export function gridPanelsForFace(face, opts = {}) {
   return fillFace(face, opts).cells
 }
 
-function uvOnFace(frame, item) {
-  if (item?.uv?.length >= 3 && item.uv.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) {
+function uvOnFace(frame, item, faceId) {
+  // uv is stored in that panel's own face frame. Another face's numbers are not this frame.
+  if (item?.faceId === faceId && item?.uv?.length >= 3 && item.uv.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) {
     return item.uv.map((p) => ({ x: p.x, y: p.y }))
   }
   if (item?.corners?.length >= 3) {
@@ -326,7 +327,7 @@ export function spareSlotsForFace(face, { seeds = [], blockedItems = [], moduleW
   const frame = faceFrame(face)
   const o = layoutOpts({ moduleWatts, orientation, setbackM, gapM, rowGapM })
   const { across: w, down: h, shadowGapM } = panelFootprint(face, { ...o, sunDeg })
-  const toUv = (item) => uvOnFace(frame, item)
+  const toUv = (item) => uvOnFace(frame, item, face.id)
   const blocked = blockedItems.map(toUv).filter((p) => p?.length >= 3)
   const obstacleUv = (obstacles ?? [])
     .filter((ob) => ob?.vertices?.length >= 3)
@@ -829,6 +830,21 @@ export function sizingLimitKw({ panelCount, moduleWatts, planningKw } = {}) {
   return Math.max(planning, (n * watts) / 1000)
 }
 
+/**
+ * How many panels to ask for.
+ * No chosen target: every spot the planning size allows. The household suggestion is not a cap.
+ * A chosen target is that number, including one that matches the suggestion.
+ */
+export function resolvePlacementCount({ panelCount, moduleWatts, planningKw } = {}) {
+  if (panelCount != null && panelCount !== '') {
+    const explicit = Number(panelCount)
+    if (Number.isFinite(explicit) && explicit >= 0) return Math.round(explicit)
+  }
+  const planning = Number(planningKw) > 0 ? Number(planningKw) : MAX_RESIDENTIAL_KW
+  const watts = Number(moduleWatts) > 0 ? Number(moduleWatts) : 440
+  return Math.max(0, Math.floor((planning * 1000) / watts + 1e-9))
+}
+
 /** Whether one grid cell can be added beside the panels already on the roof. */
 export function canAddPanel({ panels, cell, obstacles = [], face = null, setbackM = ROOF_EDGE_SETBACK_M } = {}) {
   if (!cell?.corners || !cell?.center) return { ok: false, reason: 'That spot is not an open panel position.' }
@@ -837,7 +853,7 @@ export function canAddPanel({ panels, cell, obstacles = [], face = null, setback
     const frame = faceFrame(face)
     const uv = cell.corners?.length >= 3 ? cell.corners.map((c) => toFaceUV(toLocal(frame.origin, toLatLng(c)), frame.axes)) : cell.uv
     const { shadowGapM } = panelFootprint(face, { ...layoutOpts({ setbackM }), sunDeg: undefined })
-    const blocked = (panels ?? []).map((p) => uvOnFace(frame, p)).filter((p) => p?.length >= 3)
+    const blocked = (panels ?? []).map((p) => uvOnFace(frame, p, face.id)).filter((p) => p?.length >= 3)
     const obstacleUv = (obstacles ?? [])
       .filter((ob) => ob?.vertices?.length >= 3)
       .map((ob) => ob.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))

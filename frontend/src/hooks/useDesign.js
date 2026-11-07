@@ -4,7 +4,7 @@ import { computeDesign } from '../lib/design'
 import { stateFromPostcode } from '../lib/energyProfile'
 import { suggestedBatteryKwh, suggestedPanelCount } from '../lib/energyModel'
 import { STATES } from '../config/designerConfig'
-import { sizingLimitKw } from '../lib/panelLayout'
+import { resolvePlacementCount, sizingLimitKw } from '../lib/panelLayout'
 import { resolveSetbackM } from '../config/designerConfig'
 
 /** "11 Example St, Suburb VIC 3147, Australia" -> { state, postcode } (kept in memory only). */
@@ -27,7 +27,11 @@ export function useDesign() {
     const suggestedBattery = suggestedBatteryKwh(profile)
     const pv = {
       moduleWatts: designChoices.moduleWatts,
-      panelCount: designChoices.panelCount ?? suggestedPanels,
+      panelCount: resolvePlacementCount({
+        panelCount: designChoices.panelCount,
+        moduleWatts: designChoices.moduleWatts,
+        planningKw: designChoices.planningKw,
+      }),
     }
     const battery = {
       batteryKwh: designChoices.batteryKwh ?? suggestedBattery,
