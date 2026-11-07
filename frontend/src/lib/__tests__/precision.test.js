@@ -4,10 +4,10 @@ import { centreAdjust, interiorPoint, rejectionReason, stepInPlaneRotation, tran
 import { computeDesign } from '../design'
 import { buildDesignSnapshot } from '../designSnapshot'
 import { offset } from '../geo'
-import { assessFaceArray, fillFace, layoutPanels, validateLayout } from '../panelLayout'
+import { assessFaceArray, fillFace, gutterTurned, layoutPanels, mountFor, validateLayout } from '../panelLayout'
 import { pointInPolygon } from '../polygon'
 import { editedAzimuth, manualFace, resetAzimuth, wrapAzimuth } from '../roofFaces'
-import { OUTLINE_EDIT_MAX_ZOOM, shouldAutoFit } from '../outlineEdit'
+import { OUTLINE_EDIT_MAX_ZOOM, clampMapZoom, mapInteraction, shouldAutoFit } from '../outlineEdit'
 
 const o = { lat: -37.8665, lng: 145.1012 }
 const rect = (id, w, d, azimuthDegrees = 0) => {
@@ -50,6 +50,71 @@ describe('outline edit zoom', () => {
     expect(OUTLINE_EDIT_MAX_ZOOM).toBe(21)
     expect(shouldAutoFit(true)).toBe(false)
     expect(shouldAutoFit(false)).toBe(true)
+  })
+})
+
+describe('move map mode', () => {
+  it('pans and zooms without editing panels or the outline', () => {
+    const move = mapInteraction('move')
+    expect(move.panAndZoom).toBe(true)
+    expect(move.dragMovesPanels).toBe(false)
+    expect(move.clickEditsPanels).toBe(false)
+    expect(move.dragEditsOutline).toBe(false)
+    expect(move.autoFitOnSelection).toBe(false)
+    expect(mapInteraction('panels').dragMovesPanels).toBe(true)
+    expect(mapInteraction('panels').dragEditsOutline).toBe(false)
+    expect(mapInteraction('outline').dragEditsOutline).toBe(true)
+    expect(mapInteraction('outline').dragMovesPanels).toBe(false)
+    expect(clampMapZoom(30)).toBe(21)
+    expect(clampMapZoom(0)).toBe(1)
+    expect(clampMapZoom(18.2)).toBe(18.2)
+  })
+})
+
+describe('roof direction on the panels step', () => {
+  it('keeps a small direction edit on the same rows and changes flush yield only', () => {
+    const face = rect('n', 12, 8, 0)
+    const before = layoutPanels({ insights: null, faces: [face], panelCount: 4, moduleWatts: 440, state: 'VIC' })
+    const turned = { ...face, ...editedAzimuth(face, 8) }
+    expect(gutterTurned(face, turned)).toBe(false)
+    const after = layoutPanels({ insights: null, faces: [turned], panelCount: 4, moduleWatts: 440, state: 'VIC' })
+    expect(after.panels.map((p) => p.id)).toEqual(before.panels.map((p) => p.id))
+    expect(after.annualAcKwh).not.toBeCloseTo(before.annualAcKwh, 0)
+    const spin = layoutPanels({
+      insights: null,
+      faces: [face],
+      panelCount: 4,
+      moduleWatts: 440,
+      state: 'VIC',
+      faceArrays: { n: { dxM: 0, dyM: 0, rotationDeg: 2, panelIds: before.panels.map((p) => p.id) } },
+    })
+    expect(spin.annualAcKwh).toBeCloseTo(before.annualAcKwh, 5)
+    expect(face.azimuthDegrees).toBe(0)
+    const snap = buildDesignSnapshot({
+      roofFaces: [turned],
+      design: { layout: spin, validation: { ok: true, issues: [] }, annualGenKwh: spin.annualAcKwh },
+      confirmed: true,
+      faceArrays: { n: { dxM: 0, dyM: 0, rotationDeg: 2 } },
+    })
+    expect(snap.faces[0].azimuthDegrees).toBe(8)
+    expect(snap.faces[0].arrayRotationDeg).toBe(2)
+    expect(gutterTurned(face, { ...face, ...editedAzimuth(face, 180) })).toBe(true)
+  })
+
+  it('leaves tilt-frame yield facing north when the roof direction changes', () => {
+    const flat = manualFace({
+      id: 'flat',
+      label: 'flat',
+      vertices: rect('tmp', 12, 8).vertices,
+      pitchDegrees: 2,
+      azimuthDegrees: 0,
+    })
+    expect(mountFor(flat).azimuthDeg).toBe(0)
+    const before = layoutPanels({ insights: null, faces: [flat], panelCount: 2, moduleWatts: 440, state: 'VIC' })
+    const next = { ...flat, ...editedAzimuth(flat, 140) }
+    expect(mountFor(next).azimuthDeg).toBe(0)
+    const after = layoutPanels({ insights: null, faces: [next], panelCount: 2, moduleWatts: 440, state: 'VIC' })
+    expect(after.annualAcKwh).toBeCloseTo(before.annualAcKwh, 5)
   })
 })
 

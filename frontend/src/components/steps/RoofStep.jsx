@@ -196,7 +196,7 @@ function FaceCard({
   )
 }
 
-function AzimuthEditor({ face, faces, onUpdate }) {
+export function AzimuthEditor({ face, faces, onUpdate, besideDrawing = false }) {
   const others = (faces ?? []).filter((f) => f.id !== face.id)
   return (
     <div className="azimuth-editor">
@@ -213,8 +213,10 @@ function AzimuthEditor({ face, faces, onUpdate }) {
         />
       </label>
       <small className="hint">
-        0° north, 90° east, clockwise. This is the way the roof slopes, which is the way flush panels face. It does not
-        spin the panels flat on the roof. That control is on the Panels step.
+        0° north, 90° east, clockwise. This is the way the roof slopes, which is the way flush panels face.{' '}
+        {besideDrawing
+          ? 'The drawing angle below turns the rectangles on the roof and does not change this direction.'
+          : 'It does not spin the panels flat on the roof. That control is on the Panels step.'}
       </small>
       <div className="two-column-buttons">
         <button type="button" className="secondary-button" onClick={() => onUpdate(resetAzimuth(face), true)} disabled={!face.azimuthEdited}>

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
+import { AzimuthEditor } from './RoofStep'
 import { MAX_RESIDENTIAL_KW, MODULE_WATT_OPTIONS, PLANNING_KW_MAX, PLANNING_KW_MIN, ROOF_EDGE_SETBACK_M } from '../../config/designerConfig'
 import { stepInPlaneRotation, wrapDegrees } from '../../lib/arrayAdjust'
-import { assessFaceArray, fillFace, moduleSize, proposeCentre } from '../../lib/panelLayout'
+import { assessFaceArray, fillFace, gutterTurned, moduleSize, mountFor, proposeCentre } from '../../lib/panelLayout'
 import ValidationList from '../ValidationList'
 import { fmtKw, fmtKwh } from '../../lib/format'
 
-export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEditMode }) {
+export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEditMode, onMoveMap }) {
   const { actions, energyProfile, designChoices, building } = useProject()
   const { pv, design, suggestedPanels } = useDesign()
   const { layout } = design
@@ -99,9 +100,9 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       </small>
 
       <p className="mount-summary">
-        This gutter-aligned grid found {layout.spatialCount ?? layout.available} spots inside the setbacks
-        {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. That count is
-        not a proof that another arrangement could fit more. This design places {layout.count} ({fmtKw(layout.dcKw)}).
+        {layout.spatialCount ?? layout.available} spots fit with the panels where they are now
+        {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. Blue outlines
+        are spare spots and they move when the group moves. This design places {layout.count} ({fmtKw(layout.dcKw)}).
       </p>
       <details className="adjust-design">
         <summary>Adjust design</summary>
@@ -127,9 +128,26 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
                 Toward gutter
               </button>
             </div>
+            <AzimuthEditor
+              face={alignFace}
+              faces={building.roofFaces}
+              besideDrawing
+              onUpdate={(changes) => {
+                const next = { ...alignFace, ...changes }
+                if (gutterTurned(alignFace, next)) {
+                  setAlignNote('The rows were redrawn for this roof direction. Check the panels. Spots that no longer line up with the new slope are not kept.')
+                }
+                actions.updateRoofFaceLive(alignFace.id, changes)
+              }}
+            />
+            <p className="hint">
+              {mountFor(alignFace).flat
+                ? 'Tilt frames on this face stay facing north. The roof direction above is the slope under them, not the frame direction.'
+                : 'Flush yearly output uses this roof direction. Google measured figures are not given a generic boost.'}
+            </p>
             <p className="mount-summary">
-              Rotate the whole group on this face. In-plane angle {wrapDegrees(align.rotationDeg)}°. This does not change
-              the roof direction or the yearly figure.
+              Drawing angle on the roof: {wrapDegrees(align.rotationDeg)}°. This only turns the rectangles in the plane.
+              It does not change the roof direction or the yearly figure.
             </p>
             <div className="two-column-buttons" role="group" aria-label="Rotate the panel group">
               <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, stepInPlaneRotation(align, -1))}>
@@ -213,13 +231,16 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         }}
       />
       <div className="two-column-buttons">
+        <button type="button" className={!editMode ? 'primary-button' : 'secondary-button'} onClick={() => onMoveMap?.()}>
+          Move map
+        </button>
         <button
           type="button"
           id="edit-panels"
           className={editMode ? 'primary-button' : 'secondary-button'}
           onClick={() => onEditMode(!editMode)}
         >
-          {editMode ? 'Done editing' : 'Move / add / remove panels'}
+          {editMode ? 'Done editing panels' : 'Edit panels'}
         </button>
         {((designChoices.removedPanelIds ?? []).length > 0 || (designChoices.pinnedPanelIds ?? []).length > 0) && (
           <button
@@ -241,7 +262,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
 
       <div className="sizing-facts">
         <p>
-          <span>Spots on this grid</span>
+          <span>Spots that fit</span>
           <strong>
             {layout.spatialCount ?? layout.available} panels
             {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}
@@ -264,7 +285,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         </label>
       </div>
       <small className="hint">
-        Spots on this grid are panel positions found inside the setbacks, lined up with the gutter. It is not a mathematical maximum. A blue outline is a spare spot. Blank roof without one is setback, a row gap, or another face. The target is the number below. The planning size is a sizing assumption, not a network approval. Setbacks stay.
+        Spots that fit are full panels inside the setbacks, clear of the panels already placed, no-go areas, and tilt-frame row gaps. Blue outlines are those spare spots. They update when you slide or turn the group. The target is the number below. The planning size is a sizing assumption, not a network approval. Setbacks stay.
       </small>
       {layout.dcKw > planningKw + 0.05 && (
         <small className="hint">

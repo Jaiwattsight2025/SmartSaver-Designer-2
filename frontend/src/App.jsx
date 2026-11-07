@@ -88,7 +88,8 @@ function App() {
   const activeCard = cards[activeStep]
 
   // Panel edit mode (step 3): click a panel to remove it, click a blue ghost to add one, drag to move.
-  const [panelEdit, setPanelEdit] = useState(false)
+  const [mapMode, setMapMode] = useState('move')
+  const panelEdit = mapMode === 'panels'
   const [outlineEditId, setOutlineEditId] = useState(null)
   const outlineUndo = useRef(null)
   const [canUndoOutline, setCanUndoOutline] = useState(false)
@@ -196,7 +197,7 @@ function App() {
     const onRoof = activeStep === 'roof'
     const onPanels = activeStep === 'panels'
     const editingOutline = onRoof && outlineEditId
-    map.holdZoom?.(Boolean(editingOutline))
+    if (editingOutline) map.holdZoom?.(true)
     map.showRoofFaces(showFaces ? roofFaces : [], {
       selectedId: onRoof || onPanels ? selectedRoofFaceId : null,
       dim: !onRoof && !onPanels,
@@ -224,7 +225,7 @@ function App() {
     const editing = activeStep === 'panels' && panelEdit
     const layout = design.layout
     map.showPanels(showPanelsNow ? layout.panels : [], {
-      ghosts: editing ? [...layout.candidates.slice(layout.count), ...(layout.removedCells ?? [])] : [],
+      ghosts: editing ? layout.candidates.slice(layout.count) : [],
       onPanelClick: editing ? editPanels.remove : undefined,
       onGhostClick: editing ? editPanels.add : undefined,
       onPanelDrag: editing ? editPanels.drag : undefined,
@@ -246,14 +247,18 @@ function App() {
   // What the pill on top of the map says on steps 2-4 (step 1 uses mapMessage).
   const stepGuidance = mapLocked
     ? {
-        roof: roofConfirmed
-          ? 'Roof confirmed.'
-          : 'Click a face, then drag its corner dots onto the roof edges. Confirm the roof when it looks right.',
+        roof: mapMode === 'move'
+          ? 'Move map is on. Drag to pan. + and − zoom. Choose Edit outline to move corners.'
+          : roofConfirmed
+            ? 'Roof confirmed.'
+            : 'Click a face, then drag its corner dots onto the roof edges. Confirm the roof when it looks right.',
         panels: !roofConfirmed
           ? 'Confirm the roof in step 2 first.'
-          : panelEdit
-            ? 'Click a panel to remove it, a blue outline to add one, or drag a panel to move it.'
-            : `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
+          : mapMode === 'move'
+            ? 'Move map is on. Drag to pan. + and − zoom. This does not move panels.'
+            : panelEdit
+              ? 'Click a panel to remove it, a blue outline to add one, or drag a panel to move it.'
+              : `${design.layout.count} panels placed · ${fmtKw(design.layout.dcKw)}`,
         battery: `${fmtKw(design.layout.dcKw)} solar${design.batteryKwh > 0 ? ` + ${design.batteryKwh} kWh battery` : ''}`,
       }[activeStep]
     : null
@@ -553,10 +558,10 @@ function App() {
                   outlineEditId={outlineEditId}
                   onOutlineEdit={(id) => {
                     setOutlineEditId(id)
+                    setMapMode(id ? 'outline' : 'move')
                     if (!id) {
                       outlineUndo.current = null
                       setCanUndoOutline(false)
-                      mapRef.current?.holdZoom(false)
                     }
                   }}
                   onFocusFace={(face) => mapRef.current?.focusFace(face)}
@@ -576,7 +581,12 @@ function App() {
                   onGoToRoof={() => setActiveStep('roof')}
                   roofConfirmed={roofConfirmed}
                   editMode={panelEdit}
-                  onEditMode={setPanelEdit}
+                  mapMode={mapMode}
+                  onEditMode={(on) => setMapMode(on ? 'panels' : 'move')}
+                  onMoveMap={() => {
+                    setMapMode('move')
+                    setOutlineEditId(null)
+                  }}
                 />
               )}
               {activeStep === 'battery' && <BatteryStep />}
@@ -613,6 +623,29 @@ function App() {
 
               <div className={`map-stage ${showReport ? 'hidden-map' : ''}`}>
                 <MapCanvas mapType={mapType} locked={mapLocked} onReady={handleMapReady} onError={handleMapError} />
+                {(activeStep === 'roof' || activeStep === 'panels') && (
+                  <div className="map-tools" role="group" aria-label="Map movement">
+                    <button
+                      type="button"
+                      className={mapMode === 'move' ? 'primary-button' : 'secondary-button'}
+                      onClick={() => {
+                        setMapMode('move')
+                        setOutlineEditId(null)
+                      }}
+                    >
+                      Move map
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.zoomBy?.(1)} aria-label="Zoom in">
+                      +
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.zoomBy?.(-1)} aria-label="Zoom out">
+                      −
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => mapRef.current?.fitToFaces?.(roofFaces, { force: true })}>
+                      Fit roof
+                    </button>
+                  </div>
+                )}
                 {!showReport && <div className="map-guidance">{stepGuidance ?? mapMessage}</div>}
                 {activeStep === 'output' && <OutputReport />}
                 {activeStep === 'summary' && <SummaryReport />}

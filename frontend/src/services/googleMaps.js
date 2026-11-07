@@ -106,6 +106,9 @@ export async function createMapController(container) {
     zoomControl: true,
     gestureHandling: 'greedy',
   })
+  map.addListener('dragend', () => {
+    overlays.zoomHold = true
+  })
 
   const geocoder = new maps.Geocoder()
 
@@ -501,9 +504,17 @@ export async function createMapController(container) {
       })
     },
 
+    /** One step closer or further. Never past the closest zoom the map allows. */
+    zoomBy(delta) {
+      const next = Math.min(21, Math.max(1, (map.getZoom() ?? 20) + delta))
+      overlays.zoomHold = true
+      map.setZoom(next)
+      return next
+    },
+
     /** Zoom the map so every roof face fills the view (max zoom 21). */
-    fitToFaces(faces) {
-      if (overlays.zoomHold) return
+    fitToFaces(faces, { force = false } = {}) {
+      if (overlays.zoomHold && !force) return
       const points = (faces ?? []).flatMap((face) => face.vertices ?? [])
       if (points.length < 3) return
       const bounds = new maps.LatLngBounds()
@@ -511,6 +522,7 @@ export async function createMapController(container) {
       map.fitBounds(bounds, 40)
       maps.event.addListenerOnce(map, 'idle', () => {
         if (map.getZoom() > 21) map.setZoom(21)
+        if (force) overlays.zoomHold = true
       })
     },
   }

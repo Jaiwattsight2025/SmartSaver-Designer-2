@@ -685,6 +685,23 @@ button:disabled {
   min-height: 520px;
 }
 
+.map-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
+
+.map-tools button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .map-guidance {
   position: absolute;
   top: 14px;
@@ -1576,7 +1593,8 @@ details.solar-panel summary::-webkit-details-marker {
   .stage-header,
   .metrics-strip,
   .google-map,
-  .map-guidance {
+  .map-guidance,
+  .map-tools {
     display: none !important;
   }
 
