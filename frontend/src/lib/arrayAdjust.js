@@ -88,11 +88,24 @@ export function interiorPoint(poly) {
   return best ? { x: best.x, y: best.y } : null
 }
 
-/** Why a transformed array is rejected, or ''. */
-export function rejectionReason(polys, inner, obstacles = []) {
-  if (!inner || inner.length < 3) return 'The setback leaves no room on this face.'
+/**
+ * Next in-plane rotation of a whole group. Roof azimuth is not involved.
+ * The angle stays in 0–360. One degree is the fine step; five is the coarse step.
+ */
+export function stepInPlaneRotation(current, deltaDeg) {
+  const base = current ?? {}
+  return {
+    dxM: Number(base.dxM) || 0,
+    dyM: Number(base.dyM) || 0,
+    rotationDeg: wrapDegrees((Number(base.rotationDeg) || 0) + (Number(deltaDeg) || 0)),
+  }
+}
+
+/** Why a transformed array is rejected, or ''. `clearance` is the setback from `outer`. */
+export function rejectionReason(polys, outer, obstacles = [], clearance = 0) {
+  if (!outer || outer.length < 3) return 'The setback leaves no room on this face.'
   for (const poly of polys) {
-    if (!polygonInside(poly, inner, 0)) return 'A panel would cross the roof edge or the setback.'
+    if (!polygonInside(poly, outer, clearance)) return 'A panel would cross the roof edge or the setback.'
     for (const ob of obstacles) {
       if (ob?.length >= 3 && polygonsOverlap(poly, ob, { gap: 0 })) return 'A panel would sit on a no-go area.'
     }
@@ -121,13 +134,15 @@ export function centreAdjust(polys, inner, adjust = {}) {
     rotationDeg: Number(adjust.rotationDeg) || 0,
   }
   const moved = transformUv(polys, next)
-  const reason = rejectionReason(moved, inner, [])
+  const outer = adjust.outer && adjust.outer.length >= 3 ? adjust.outer : inner
+  const clearance = outer === inner ? 0 : Number(adjust.clearance) || 0
+  const reason = rejectionReason(moved, outer, [], clearance)
   if (reason) return { ok: false, reason: `No centred fit keeps every panel inside the setback. ${reason}` }
   return { ok: true, adjust: next, reason: '' }
 }
 
-export function checkAdjust(polys, inner, obstacles, adjust) {
+export function checkAdjust(polys, outer, obstacles, adjust, clearance = 0) {
   const moved = transformUv(polys, adjust)
-  const reason = rejectionReason(moved, inner, obstacles)
+  const reason = rejectionReason(moved, outer, obstacles, clearance)
   return reason ? { ok: false, reason, uv: null } : { ok: true, reason: '', uv: moved }
 }

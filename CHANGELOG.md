@@ -1,5 +1,10 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – One-degree array rotation, honest grid count
+
+- On the selected face, Adjust design can rotate the whole panel group by 1° as well as 5°. The angle shown is the in-plane drawing angle. It does not change the roof direction or the yearly figure. Undo still puts back the previous slide and rotation. A turn that would cross the setback, hit a no-go area, or overlap is refused and the panels stay, with the reason.
+- A move is checked with the same outline clearance as placement. The spot count is the gutter-aligned grid inside the setback, including a per-row shift on a tapering face. It is not described as the most panels any arrangement could fit. Blank roof without a blue outline is not a spare spot.
+
 ## [designer-v2] – 2026-11-07 – Print proposal includes output and savings
 
 - Print / save PDF from the summary is an A4 proposal. The first page is the system, yearly generation, bill now, bill with the system, saving, and simple payback only when one complete price supports it. Later pages are the roof layout, the generation chart and bill tables from Output and savings, the household supply chart, then the price basis, assumptions and source dates.

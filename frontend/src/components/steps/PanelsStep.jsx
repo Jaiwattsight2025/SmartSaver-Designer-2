@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
 import { MAX_RESIDENTIAL_KW, MODULE_WATT_OPTIONS, PLANNING_KW_MAX, PLANNING_KW_MIN, ROOF_EDGE_SETBACK_M } from '../../config/designerConfig'
+import { stepInPlaneRotation, wrapDegrees } from '../../lib/arrayAdjust'
 import { assessFaceArray, fillFace, moduleSize, proposeCentre } from '../../lib/panelLayout'
 import ValidationList from '../ValidationList'
 import { fmtKw, fmtKwh } from '../../lib/format'
@@ -23,7 +24,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
     const grids = fillFace(face, { moduleWatts: pv.moduleWatts, setbackM: setback }).cells.filter((c) => ids.has(c.id))
     const verdict = assessFaceArray(face, grids, next, { setbackM: setback, obstacles: designChoices.obstacles })
     if (!verdict.ok) {
-      setAlignNote(`${verdict.reason} The panels were not moved.`)
+      setAlignNote(`${verdict.reason} The panels were not moved. Blank roof without a blue outline is not a spare spot on this grid.`)
       return
     }
     setAlignNote('')
@@ -33,7 +34,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         [face.id]: {
           dxM: next.dxM || 0,
           dyM: next.dyM || 0,
-          rotationDeg: next.rotationDeg || 0,
+          rotationDeg: wrapDegrees(next.rotationDeg),
           panelIds: [...ids],
           undo: { dxM: align.dxM || 0, dyM: align.dyM || 0, rotationDeg: align.rotationDeg || 0 },
         },
@@ -98,9 +99,9 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       </small>
 
       <p className="mount-summary">
-        These faces fit {layout.spatialCount ?? layout.available} panels inside the setbacks
-        {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. This design
-        places {layout.count} ({fmtKw(layout.dcKw)}). The fit and the target are separate.
+        This gutter-aligned grid found {layout.spatialCount ?? layout.available} spots inside the setbacks
+        {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. That count is
+        not a proof that another arrangement could fit more. This design places {layout.count} ({fmtKw(layout.dcKw)}).
       </p>
       <details className="adjust-design">
         <summary>Adjust design</summary>
@@ -125,10 +126,22 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
               <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, dyM: (align.dyM || 0) + 0.1 })}>
                 Toward gutter
               </button>
-              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, rotationDeg: (align.rotationDeg || 0) - 5 })}>
+            </div>
+            <p className="mount-summary">
+              Rotate the whole group on this face. In-plane angle {wrapDegrees(align.rotationDeg)}°. This does not change
+              the roof direction or the yearly figure.
+            </p>
+            <div className="two-column-buttons" role="group" aria-label="Rotate the panel group">
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, stepInPlaneRotation(align, -1))}>
+                Rotate −1°
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, stepInPlaneRotation(align, 1))}>
+                Rotate +1°
+              </button>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, stepInPlaneRotation(align, -5))}>
                 Rotate −5°
               </button>
-              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, { ...align, rotationDeg: (align.rotationDeg || 0) + 5 })}>
+              <button type="button" className="secondary-button" onClick={() => commitArray(alignFace, stepInPlaneRotation(align, 5))}>
                 Rotate +5°
               </button>
             </div>
@@ -228,7 +241,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
 
       <div className="sizing-facts">
         <p>
-          <span>Roof fit</span>
+          <span>Spots on this grid</span>
           <strong>
             {layout.spatialCount ?? layout.available} panels
             {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}
@@ -251,7 +264,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         </label>
       </div>
       <small className="hint">
-        Roof fit is how many panels sit inside the setbacks. The target is the number you set below. The planning size is a sizing assumption, not a network approval. A target above the planning size is kept, up to the roof fit. Setbacks stay.
+        Spots on this grid are panel positions found inside the setbacks, lined up with the gutter. It is not a mathematical maximum. A blue outline is a spare spot. Blank roof without one is setback, a row gap, or another face. The target is the number below. The planning size is a sizing assumption, not a network approval. Setbacks stay.
       </small>
       {layout.dcKw > planningKw + 0.05 && (
         <small className="hint">

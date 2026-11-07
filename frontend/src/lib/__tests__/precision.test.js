@@ -1,6 +1,6 @@
 // Synthetic geometry. Not a live roof survey.
 import { describe, expect, it } from 'vitest'
-import { centreAdjust, interiorPoint, rejectionReason, transformUv } from '../arrayAdjust'
+import { centreAdjust, interiorPoint, rejectionReason, stepInPlaneRotation, transformUv, wrapDegrees } from '../arrayAdjust'
 import { computeDesign } from '../design'
 import { buildDesignSnapshot } from '../designSnapshot'
 import { offset } from '../geo'
@@ -180,5 +180,103 @@ describe('snapshot keeps direction and alignment', () => {
     })
     expect(snap.faces[0]).toMatchObject({ azimuthDegrees: 80, azimuthEdited: true, arrayDxM: 0.1, arrayRotationDeg: 0 })
     expect(snap.panelIds).toEqual(design.layout.panels.map((p) => p.id))
+  })
+})
+
+describe('one-degree in-plane rotation', () => {
+  const face = rect('roomy', 16, 12, 0)
+  const pool = fillFace(face, { moduleWatts: 440 }).cells
+  const mid = {
+    x: pool.reduce((s, c) => s + c.uvCenter.x, 0) / pool.length,
+    y: pool.reduce((s, c) => s + c.uvCenter.y, 0) / pool.length,
+  }
+  const spot = pool.slice().sort((a, b) => {
+    const da = (a.uvCenter.x - mid.x) ** 2 + (a.uvCenter.y - mid.y) ** 2
+    const db = (b.uvCenter.x - mid.x) ** 2 + (b.uvCenter.y - mid.y) ** 2
+    return da - db
+  })[0]
+  const base = layoutPanels({
+    insights: null,
+    faces: [face],
+    panelCount: 1,
+    moduleWatts: 440,
+    state: 'VIC',
+    maxKw: 20,
+    pinnedPanelIds: [spot.id],
+  })
+  const grids = () => fillFace(face, { moduleWatts: 440 }).cells.filter((c) => c.id === spot.id)
+
+  function lay(rotationDeg) {
+    return layoutPanels({
+      insights: null,
+      faces: [face],
+      panelCount: 1,
+      moduleWatts: 440,
+      state: 'VIC',
+      maxKw: 20,
+      pinnedPanelIds: [spot.id],
+      faceArrays: { roomy: { dxM: 0, dyM: 0, rotationDeg, panelIds: [spot.id] } },
+    })
+  }
+
+  it('steps by 1°, undoes one step, and leaves an invalid turn unmoved', () => {
+    expect(wrapDegrees(stepInPlaneRotation({ rotationDeg: 359 }, 1).rotationDeg)).toBe(0)
+    expect(stepInPlaneRotation({ dxM: 0.2, rotationDeg: 2 }, -1)).toMatchObject({ dxM: 0.2, rotationDeg: 1 })
+    let angle = { dxM: 0, dyM: 0, rotationDeg: 0 }
+    const ids = base.panels.map((p) => p.id)
+    const kwh = base.panels.map((p) => p.yearlyAcKwh)
+    const applied = []
+    for (let i = 0; i < 3; i += 1) {
+      const next = stepInPlaneRotation(angle, 1)
+      const verdict = assessFaceArray(face, grids(), next)
+      expect(verdict.ok, verdict.reason).toBe(true)
+      const laid = lay(next.rotationDeg)
+      expect(laid.notes.join(' ')).not.toMatch(/not applied/)
+      expect(laid.panels.map((p) => p.id)).toEqual(ids)
+      expect(laid.panels.map((p) => p.yearlyAcKwh)).toEqual(kwh)
+      expect(face.azimuthDegrees).toBe(0)
+      applied.push({ angle: next, centers: laid.panels.map((p) => p.center) })
+      angle = { ...next, undo: angle }
+    }
+    expect(applied[2].angle.rotationDeg).toBe(3)
+    const undone = lay(angle.undo.rotationDeg)
+    expect(undone.panels.map((p) => p.center)).toEqual(applied[1].centers)
+    const edge = pool.slice().sort((a, b) => a.col - b.col || a.row - b.row)[0]
+    const bad = assessFaceArray(face, [edge], { dxM: 0, dyM: 0, rotationDeg: 25 })
+    expect(bad.ok).toBe(false)
+    expect(bad.reason).toMatch(/setback|edge/)
+    const stayed = lay(angle.rotationDeg)
+    expect(stayed.panels.map((p) => p.center)).toEqual(applied[2].centers)
+    const snap = buildDesignSnapshot({
+      roofFaces: [face],
+      design: { layout: stayed, validation: { ok: true, issues: [] } },
+      confirmed: true,
+      faceArrays: { roomy: { dxM: 0, dyM: 0, rotationDeg: 3 } },
+    })
+    expect(snap.faces[0].arrayRotationDeg).toBe(3)
+    expect(snap.panelIds).toEqual(ids)
+  })
+})
+
+describe('tapered roof grid', () => {
+  it('keeps every spot inside the setback, and a zero move of those spots is allowed', () => {
+    const a = o
+    const b = offset(a, 12, 90)
+    const c = offset(b, 7, 180)
+    const d = offset(a, 7, 180)
+    const e = offset(d, 3, 90)
+    // Gutter along the north side, ridge shorter and shifted: a hip-like taper.
+    const skew = manualFace({ id: 'skew', label: 'skew', vertices: [a, b, c, e], pitchDegrees: 22, azimuthDegrees: 0 })
+    const found = fillFace(skew, { moduleWatts: 440, setbackM: 0.2 })
+    expect(found.cells.length).toBeGreaterThan(0)
+    const zero = assessFaceArray(skew, found.cells, { dxM: 0, dyM: 0, rotationDeg: 0 }, { setbackM: 0.2 })
+    expect(zero.ok, zero.reason).toBe(true)
+    const rows = new Map()
+    for (const cell of found.cells) {
+      const cols = rows.get(cell.row) ?? []
+      cols.push(cell.col)
+      rows.set(cell.row, cols)
+    }
+    expect(rows.size).toBeGreaterThan(1)
   })
 })

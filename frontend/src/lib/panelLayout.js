@@ -199,16 +199,33 @@ export function fillFace(face, options = {}) {
   // Try a few grid offsets along the gutter (and tiny nudges up from it); keep the one that fits most.
   let best = { cells: [], u0: minU, shift: 0 }
   const tries = 8
+  const phases = []
+  for (let i = 0; i < tries; i += 1) phases.push(minU + (i * stepU) / tries)
   for (const shift of [0, 0.01, 0.03, 0.06]) {
     const rows = makeRows(shift)
-    for (let i = 0; i < tries; i += 1) {
-      const u0 = minU + (i * stepU) / tries
+    for (const u0 of phases) {
       const cells = tryOffset(u0, rows)
       if (cells.length > best.cells.length) best = { cells, u0, shift }
     }
   }
 
-  const cells = best.cells.map((c) => {
+  // One phase for every row can miss a spot on a tapering face: the wide row
+  // and the narrow row often want different alignments. Each row may shift
+  // along the gutter on its own when that fits more panels. The setback check
+  // is unchanged.
+  const phasedRows = makeRows(best.shift)
+  let chosen = best.cells
+  for (const row of phasedRows) {
+    const have = chosen.filter((c) => c.row === row.r)
+    let bestRow = have
+    for (const u0 of phases) {
+      const cells = tryOffset(u0, [row])
+      if (cells.length > bestRow.length) bestRow = cells
+    }
+    if (bestRow.length > have.length) chosen = [...chosen.filter((c) => c.row !== row.r), ...bestRow]
+  }
+
+  const cells = chosen.map((c) => {
     const ctr = { x: (c.uv[0].x + c.uv[2].x) / 2, y: (c.uv[0].y + c.uv[2].y) / 2 }
     return {
       id: `${face.id}:r${c.row}:c${c.col}`,
@@ -416,7 +433,7 @@ export function layoutPanels({
     )
   } else if (wanted > spatialCount) {
     notes.push(
-      `Only ${spatialCount} panels fit inside the setbacks and gaps on the faces you ticked. Your target asked for ${wanted}. The setbacks are unchanged.`,
+      `This grid has ${spatialCount} spots inside the setbacks on the faces you ticked. Your target asked for ${wanted}. That count is not a proof another arrangement could fit more. The setbacks are unchanged.`,
     )
   }
   if (blockedByObstacles) notes.push(`${blockedByObstacles} spot${blockedByObstacles === 1 ? '' : 's'} left clear around no-go areas.`)
@@ -660,18 +677,18 @@ export function proposeCentre(face, gridPanels, { setbackM = ROOF_EDGE_SETBACK_M
   const frame = faceFrame(face)
   const inner = insetPolygon(frame.poly, setbackM)
   const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
-  return centreAdjust(polys, inner, { rotationDeg })
+  return centreAdjust(polys, inner, { rotationDeg, outer: frame.poly, clearance: setbackM })
 }
 
 /** Check an in-plane move against the setback and no-go areas. Does not change yield. */
 export function assessFaceArray(face, gridPanels, adjust, { setbackM = ROOF_EDGE_SETBACK_M, obstacles = [] } = {}) {
   const frame = faceFrame(face)
-  const inner = insetPolygon(frame.poly, setbackM)
   const polys = (gridPanels ?? []).map((p) => (p.uv ?? []).map((q) => ({ x: q.x, y: q.y })))
   const obs = (obstacles ?? [])
     .filter((o) => o?.vertices?.length >= 3)
     .map((o) => o.vertices.map((v) => toFaceUV(toLocal(frame.origin, toLatLng(v)), frame.axes)))
-  return checkAdjust(polys, inner, obs, adjust)
+  // Same rule as placement: clearance from the outline, not a second inset.
+  return checkAdjust(polys, frame.poly, obs, adjust, setbackM)
 }
 
 /** Nearest free panel spot to a lat/lng (for drag-and-snap), or null if none is close. */
