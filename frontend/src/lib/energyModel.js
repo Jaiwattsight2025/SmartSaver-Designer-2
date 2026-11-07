@@ -1,5 +1,5 @@
 /*
- * Generation, self-consumption, bill savings, sizing and pricing.
+ * Generation, self-consumption, bill savings and sizing.
  * Pure functions - no React, easy to test.
  */
 import {
@@ -16,13 +16,6 @@ import {
   SOLAR_HOURLY_SHAPE,
   SOLAR_YIELD_BY_STATE,
 } from '../config/designerConfig'
-import {
-  BATTERY_PACKAGES,
-  SOLAR_PRICE_HIGH_FACTOR,
-  SOLAR_PRICE_LOW_FACTOR,
-  SOLAR_PRICE_PER_WATT,
-} from '../config/pricing'
-
 const normalise = (shape) => {
   const total = shape.reduce((a, b) => a + b, 0)
   return shape.map((x) => x / total)
@@ -136,26 +129,7 @@ export function suggestedBatteryKwh(profile) {
   return BATTERY_SIZE_OPTIONS_KWH.find((s) => s >= need) ?? BATTERY_SIZE_OPTIONS_KWH.at(-1)
 }
 
-// ---------- pricing (all PLACEHOLDER, see config/pricing.js) ----------
-
-export function solarPrice(dcKw) {
-  if (!(dcKw > 0)) return { mid: 0, low: 0, high: 0, perWatt: 0 }
-  const band = SOLAR_PRICE_PER_WATT.find(([limit]) => dcKw <= limit + 1e-9) ?? SOLAR_PRICE_PER_WATT.at(-1)
-  const mid = dcKw * 1000 * band[1]
-  return { mid, low: mid * SOLAR_PRICE_LOW_FACTOR, high: mid * SOLAR_PRICE_HIGH_FACTOR, perWatt: band[1] }
-}
-
-export function batteryPrice(kwh) {
-  if (!(kwh > 0)) return { price: 0, packageName: null, note: null }
-  const pkg = BATTERY_PACKAGES.find((p) => p.kwh >= kwh - 1e-9)
-  if (!pkg) {
-    return { price: null, packageName: null, note: 'No reference price above 30 kWh - quote required.' }
-  }
-  const note =
-    pkg.kwh > kwh ? `No price data for ${kwh} kWh; priced as the ${pkg.kwh} kWh package.` : null
-  return { price: pkg.price, packageName: pkg.name, note }
-}
-
+/** Simple payback: cost / yearly saving. Null unless both are above zero. Not an IRR. */
 export function paybackYears(price, annualSaving) {
   if (!(price > 0) || !(annualSaving > 0)) return null
   return price / annualSaving

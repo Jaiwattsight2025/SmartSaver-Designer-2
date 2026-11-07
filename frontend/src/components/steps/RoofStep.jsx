@@ -220,27 +220,28 @@ function AzimuthEditor({ face, faces, onUpdate }) {
         <button type="button" className="secondary-button" onClick={() => onUpdate(resetAzimuth(face), true)} disabled={!face.azimuthEdited}>
           Reset to detected
         </button>
-        {others.length > 0 && (
-          <label>
-            Match another face
-            <select
-              aria-label={`Match the direction of ${face.label} to another face`}
-              defaultValue=""
-              onChange={(e) => {
-                const other = others.find((f) => f.id === e.target.value)
-                if (other) onUpdate(editedAzimuth(face, other.azimuthDegrees), true)
-              }}
-            >
-              <option value="">Choose a face</option>
-              {others.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label} ({wrapAzimuth(f.azimuthDegrees)}°)
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
+      {others.length > 0 && (
+        <label className="match-face">
+          Match a face
+          <select
+            aria-label={`Match the direction of ${face.label} to another face`}
+            defaultValue=""
+            onChange={(e) => {
+              const other = others.find((f) => f.id === e.target.value)
+              if (other) onUpdate(editedAzimuth(face, other.azimuthDegrees), true)
+              e.target.value = ''
+            }}
+          >
+            <option value="">Match a face</option>
+            {others.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}, {wrapAzimuth(f.azimuthDegrees)}°
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   )
 }
@@ -364,7 +365,7 @@ export default function RoofStep({
       {solar.status === 'Connected' && faces.length > 0 && !confirmed && (
         <div className="info-box">
           {no3dRoofNote(faces) ||
-            `We found ${faces.length} roof face${faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check each outline: click a face and drag its corner dots onto the roof edges (drag a middle dot to add a corner, right-click a corner to delete it). Orange outlines are rough guesses.`}
+            `We found ${faces.length} roof face${faces.length === 1 ? '' : 's'}. Tick the ones you want panels on, then check each outline: click a face and drag its corner dots onto the roof edges (drag an edge dot to add a corner). Orange outlines are rough guesses.`}
         </div>
       )}
 

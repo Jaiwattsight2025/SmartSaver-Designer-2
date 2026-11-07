@@ -34,6 +34,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
           dxM: next.dxM || 0,
           dyM: next.dyM || 0,
           rotationDeg: next.rotationDeg || 0,
+          panelIds: [...ids],
           undo: { dxM: align.dxM || 0, dyM: align.dyM || 0, rotationDeg: align.rotationDeg || 0 },
         },
       },
@@ -66,8 +67,13 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
     )
   }
 
-  const maxCount = Math.min(layout.available, layout.maxByKw ?? Infinity)
-  const setCount = (n) => actions.updateDesign({ panelCount: Math.max(0, Math.min(maxCount, Math.round(n) || 0)) })
+  const maxCount = layout.spatialCount ?? layout.available
+  const planningKw = designChoices.planningKw ?? MAX_RESIDENTIAL_KW
+  const setCount = (n) =>
+    actions.updateDesign({
+      panelCount: Math.max(0, Math.min(maxCount, Math.round(n) || 0)),
+      placementNote: null,
+    })
 
   return (
     <div className="control-stack">
@@ -98,22 +104,6 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       </p>
       <details className="adjust-design">
         <summary>Adjust design</summary>
-        <label htmlFor="planning-kw">Planning size (kW)</label>
-        <input
-          id="planning-kw"
-          type="number"
-          min={PLANNING_KW_MIN}
-          max={PLANNING_KW_MAX}
-          step="0.1"
-          value={designChoices.planningKw ?? MAX_RESIDENTIAL_KW}
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            if (Number.isFinite(v) && v >= PLANNING_KW_MIN && v <= PLANNING_KW_MAX) actions.updateDesign({ planningKw: v })
-          }}
-        />
-        <small className="hint">
-          A planning assumption, not a network approval. The roof can fit more than this. Setbacks are not removed to make room.
-        </small>
         <strong>Line up this face&apos;s panels</strong>
         <small className="hint">
           {alignFace
@@ -236,7 +226,40 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       )}
       </details>
 
-      <label htmlFor="panel-count">Number of panels</label>
+      <div className="sizing-facts">
+        <p>
+          <span>Roof fit</span>
+          <strong>
+            {layout.spatialCount ?? layout.available} panels
+            {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}
+          </strong>
+        </p>
+        <label htmlFor="planning-kw">
+          Planning size (kW)
+          <input
+            id="planning-kw"
+            type="number"
+            min={PLANNING_KW_MIN}
+            max={PLANNING_KW_MAX}
+            step="0.1"
+            value={planningKw}
+            onChange={(e) => {
+              const v = Number(e.target.value)
+              if (Number.isFinite(v) && v >= PLANNING_KW_MIN && v <= PLANNING_KW_MAX) actions.updateDesign({ planningKw: v })
+            }}
+          />
+        </label>
+      </div>
+      <small className="hint">
+        Roof fit is how many panels sit inside the setbacks. The target is the number you set below. The planning size is a sizing assumption, not a network approval. A target above the planning size is kept, up to the roof fit. Setbacks stay.
+      </small>
+      {layout.dcKw > planningKw + 0.05 && (
+        <small className="hint">
+          The target is above the {planningKw} kW planning size. The layout follows the target up to the roof fit.
+        </small>
+      )}
+
+      <label htmlFor="panel-count">Target panels</label>
       <div className="count-row">
         <button type="button" className="secondary-button" onClick={() => setCount(layout.count - 1)} aria-label="One fewer panel">
           −
@@ -285,6 +308,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         </div>
       </div>
       {editMode && <div className="info-box">Panel editing is on. Open Adjust design to finish or to reset the layout.</div>}
+      {designChoices.placementNote && <div className="info-box error">{designChoices.placementNote}</div>}
 
       {layout.notes?.map((n) => (
         <div key={n} className="info-box">

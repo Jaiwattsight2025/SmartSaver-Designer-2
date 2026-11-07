@@ -1,5 +1,14 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Handles, panel target, sourced prices
+
+- Corner handles draw a small translucent ring. The marker is 44 px (36 px for an edge insert) so the touch target stays large. The roof copy no longer says a right-click deletes a corner. Undo still puts the last corner edit back.
+- Match a face is a full-width list. The closed label is "Match a face", and each option is the face name and its degrees.
+- The selected roof card has a gold outline and a pale gold fill. The green include tick is unchanged.
+- The panel stepper goes up to the roof fit, not the 13.2 kW planning size. Roof fit, the target and the planning size sit together. A target above the planning size is kept. The planning size is still described as an assumption, not a network approval. Setbacks are unchanged.
+- Clicking an empty panel spot keeps the panels already placed and adds that spot, including after the array has been slid, as long as the spot does not overlap, cross the setback or sit on a no-go area. If it cannot be added, the reason is shown. A new panel is not dragged by an alignment that was already applied.
+- Summary prices are the Solar Choice residential table dated 1 November 2026 (page updated 6 November 2026) and the Solar Choice battery table updated the same day. Premium rows for every capital were read from that premium table. The national All row is stored and is not used when the state is missing. Sizes outside 3–10 kW solar or 10–50 kWh battery are unavailable, including 15.84 kW. A value between two published cells is labelled a derived estimate. 13.5 kWh battery-only is that estimate between the 10 and 20 kWh cells ($7,384 and $14,172), $9,760, not a published average. Standard and premium are separate offer tiers, not a price range. The pre-rebate battery column is not used. Net figures already include GST and the rebate, so it is not subtracted again. The Cheaper Home Batteries page (updated 9 June 2026) supplies the STC factors only. There is no official dollar rate. Solar and battery benchmarks are not added into a project price. Simple payback is cost divided by a positive modelled saving, from a solar-only benchmark or from an installer quote the customer types. It is labelled as not an IRR and not a guarantee. Charts use the modelled bills, not the price tables. The archived AlphaESS package prices and the placeholder banner are gone.
+
 ## [designer-v2] – 2026-11-06 – Azimuth, outline focus, selection, capacity, array align
 
 - Roof direction is separate from the traced outline. 0° is north and 90° is east, clockwise, wrapped into 0–360. It defaults to the detected value, can be typed, matched to another face, and reset. The override stays on the face when you change steps. Changing it does not move the outline. Flush yield uses this direction. Sliding or rotating the panels on the roof does not change it, and does not change the yearly-yield figure.

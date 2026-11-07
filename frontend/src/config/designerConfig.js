@@ -4,7 +4,7 @@
  * Every number the Designer uses that does NOT come from the customer's bill
  * or Google's roof data lives here.
  *   [ASSUMPTION]  engineering / industry rule of thumb - reasonable, but review.
- * Prices live in pricing.js (all [PLACEHOLDER]).
+ * Installed-price benchmarks live in src/lib/priceBenchmarks.js. pricing.js is shop links only.
  *
  * Values marked "same as Wattsight" are copied from
  * Wattsight\platform\config\assumptions.py so both tools give the same answer.

@@ -37,7 +37,7 @@ export function buildingMatchWarning(target, insights, { toleranceM = 3 } = {}) 
 export function no3dRoofNote(faces) {
   const solar = (faces ?? []).filter((f) => f.source === 'solar-api')
   if (!solar.length || solar.some((f) => f.outlineShape === 'dsm')) return ''
-  return 'Google has no usable 3D roof model for this spot (common in rural and new areas), so these outlines are estimates. Drag the corner dots onto the roof edges (drag a middle dot to add a corner, right-click a corner to delete one), or trace the roof yourself.'
+  return 'Google has no usable 3D roof model for this spot (common in rural and new areas), so these outlines are estimates. Drag a corner dot onto the roof edge, or drag an edge dot to add a corner. Undo puts the last corner edit back. You can also trace the roof yourself.'
 }
 
 /** Friendlier text for "no Solar API building here" errors. */

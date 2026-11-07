@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { facesFromBuildingInsights, manualFace } from '../roofFaces'
 import { gridPanelsForFace, layoutPanels, orientationFactor, snapToCell, validateLayout } from '../panelLayout'
 import {
-  batteryPrice,
   billImpact,
   monthlySolarShares,
   paybackYears,
   simulateYear,
-  solarPrice,
   suggestedBatteryKwh,
   suggestedInverterKw,
   suggestedPanelCount,
@@ -178,15 +176,10 @@ describe('energy model', () => {
     expect(suggestedBatteryKwh(profile)).toBe(13.5)
     expect(suggestedBatteryKwh({ ...profile, recommendedBatteryKwh: null, avgDailyKwh: 20 })).toBe(10)
   })
-  it('prices from the placeholder tables', () => {
-    expect(solarPrice(6.6).mid).toBeCloseTo(6600 * 1.16, 6)
-    expect(solarPrice(10.12).perWatt).toBe(0.9)
-    expect(batteryPrice(13.5)).toMatchObject({ price: 7490 })
-    expect(batteryPrice(13.5).note).toMatch(/priced as the 20 kWh/)
-    expect(batteryPrice(25).note).toBeNull()
-    expect(batteryPrice(40).price).toBeNull()
+  it('simple payback is cost over a positive saving', () => {
     expect(paybackYears(10000, 2000)).toBe(5)
     expect(paybackYears(10000, 0)).toBeNull()
+    expect(paybackYears(10000, -1)).toBeNull()
   })
 })
 
@@ -200,9 +193,14 @@ describe('whole design', () => {
     expect(design.annualGenKwh).toBeGreaterThan(9000)
     expect(design.bill.savingAnnual).toBeGreaterThan(0)
     expect(design.bill.savingAnnual).toBeLessThan(design.bill.beforeAnnual)
-    expect(design.pricing.placeholder).toBe(true)
-    expect(design.pricing.totalMid).toBeCloseTo(solarPrice(8.8).mid + 7490, 6)
-    expect(design.payback.total).toBeGreaterThan(0)
+    expect(design.pricing.solar.standard.aud).toBe(7902)
+    expect(design.pricing.solar.standard.derived).toBe(true)
+    expect(design.pricing.solar.standard.citation).toMatch(/7 kW/)
+    expect(design.pricing.solar.standard.citation).toMatch(/10 kW/)
+    expect(design.pricing.battery.only.aud).toBe(9760)
+    expect(design.pricing.battery.only.derived).toBe(true)
+    expect(design.pricing.combinedFromIndices).toBe(false)
+    expect(design.payback).toBeNull()
   })
   it('summary JSON has no address-like fields and the text is readable', () => {
     const json = buildDesignJson({ profile, design, pv, roofFaces: faces, now: new Date('2026-11-04T00:00:00Z') })
@@ -211,7 +209,22 @@ describe('whole design', () => {
     expect(JSON.stringify(json)).not.toMatch(/address|nmi|street/i)
     const text = buildSummaryText({ profile, design, pv })
     expect(text).toMatch(/20 x 440 W panels = 8.80 kW/)
-    expect(text).toMatch(/PLACEHOLDER/)
+    expect(text).not.toMatch(/PLACEHOLDER|AlphaESS|7490/)
+    expect(text).toMatch(/not added together/)
+    expect(text).toMatch(/Simple payback is unavailable/)
+    const quoted = computeDesign({
+      profile,
+      insights: insightsFixture,
+      roofFaces: faces,
+      pv,
+      battery: { batteryKwh: 13.5, inverterKw: null },
+      state: 'VIC',
+      installerQuoteAud: 20000,
+    })
+    const quotedText = buildSummaryText({ profile, design: quoted, pv })
+    expect(quoted.payback.kind).toBe('user-quote')
+    expect(quoted.payback.years).toBeCloseTo(20000 / quoted.bill.savingAnnual, 6)
+    expect(quotedText).toMatch(/installer quote of \$20,000/)
   })
   it('works with no profile and no faces', () => {
     const d = computeDesign({ profile: null, insights: null, roofFaces: [], pv: { moduleWatts: 440, panelCount: 10 }, battery: { batteryKwh: 0, inverterKw: null }, state: null })

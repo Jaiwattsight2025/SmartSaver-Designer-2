@@ -551,6 +551,77 @@ export function resolvePanelDrag(origin, drop, candidates, { exclude = [], maxM 
   return { type: 'cancel' }
 }
 
+/**
+ * kW cap used by the layout.
+ * An explicit panel target is allowed to exceed the planning size, up to the
+ * roof fit. The planning size stays what the customer typed. It is not a
+ * hidden stopper and it is not a network approval.
+ */
+export function sizingLimitKw({ panelCount, moduleWatts, planningKw } = {}) {
+  const planning = Number(planningKw) > 0 ? Number(planningKw) : MAX_RESIDENTIAL_KW
+  const n = Number(panelCount)
+  const watts = Number(moduleWatts)
+  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(watts) || watts <= 0) return planning
+  return Math.max(planning, (n * watts) / 1000)
+}
+
+/** Whether one grid cell can be added beside the panels already on the roof. */
+export function canAddPanel({ panels, cell, obstacles = [], face = null, setbackM = ROOF_EDGE_SETBACK_M } = {}) {
+  if (!cell?.corners || !cell?.center) return { ok: false, reason: 'That spot is not an open panel position.' }
+  if ((panels ?? []).some((p) => p.id === cell.id)) return { ok: false, reason: 'A panel is already on that spot.' }
+  if (face) {
+    const frame = faceFrame(face)
+    const uv = cell.corners.map((c) => toFaceUV(toLocal(frame.origin, toLatLng(c)), frame.axes))
+    if (!polygonInside(uv, frame.poly, setbackM - 0.01)) {
+      return { ok: false, reason: `That spot crosses the roof edge or the ${setbackM} m setback.` }
+    }
+  }
+  const origin = panels?.[0]?.center ?? cell.center
+  const cellPoly = asPoly(origin, cell.corners)
+  const cellGeom = { xy: cellPoly, ...radius(cellPoly) }
+  for (const p of panels ?? []) {
+    const xy = asPoly(origin, p.corners)
+    const geom = { xy, ...radius(xy) }
+    if (near(cellGeom, geom, 0) && polygonsOverlap(cellPoly, xy, { gap: 0.01 })) {
+      return { ok: false, reason: 'That spot overlaps a panel already on the roof.' }
+    }
+  }
+  const obs = (obstacles ?? []).filter((o) => o?.vertices?.length >= 3).map((o) => asPoly(origin, o.vertices))
+  if (obs.some((ob) => polygonsOverlap(cellPoly, ob, { gap: 0 }))) {
+    return { ok: false, reason: 'That spot is inside a no-go area.' }
+  }
+  return { ok: true, reason: '' }
+}
+
+/**
+ * Design patch for clicking one empty panel spot.
+ * Existing panel ids stay. A face that has already been slid or rotated does
+ * not drag the new panel with it.
+ */
+export function nextPanelAdd({ placedIds, cell, panels, panelCount, faceArrays, removedIds, obstacles, face, setbackM } = {}) {
+  const decision = canAddPanel({ panels, cell, obstacles, face, setbackM })
+  if (!decision.ok) return { ok: false, patch: { placementNote: decision.reason } }
+  const arrays = { ...(faceArrays ?? {}) }
+  const adj = arrays[cell.faceId]
+  const active = adj && ((Number(adj.dxM) || 0) !== 0 || (Number(adj.dyM) || 0) !== 0 || (Number(adj.rotationDeg) || 0) !== 0)
+  if (active && !Array.isArray(adj.panelIds)) {
+    arrays[cell.faceId] = {
+      ...adj,
+      panelIds: (panels ?? []).filter((p) => p.faceId === cell.faceId).map((p) => p.id),
+    }
+  }
+  return {
+    ok: true,
+    patch: {
+      removedPanelIds: (removedIds ?? []).filter((x) => x !== cell.id),
+      pinnedPanelIds: [...new Set([...(placedIds ?? []), cell.id])],
+      panelCount: (Number(panelCount) || 0) + 1,
+      placementNote: null,
+      faceArrays: arrays,
+    },
+  }
+}
+
 function applyFaceArrays(panels, faces, faceArrays, { setbackM, obstacles, notes }) {
   const out = []
   const seen = new Set()
@@ -559,24 +630,26 @@ function applyFaceArrays(panels, faces, faceArrays, { setbackM, obstacles, notes
     mine.forEach((p) => seen.add(p.id))
     const adj = faceArrays?.[face.id]
     const active = adj && ((Number(adj.dxM) || 0) !== 0 || (Number(adj.dyM) || 0) !== 0 || (Number(adj.rotationDeg) || 0) !== 0)
-    if (!mine.length || !active) {
+    const group = !active ? [] : Array.isArray(adj.panelIds) ? mine.filter((p) => adj.panelIds.includes(p.id)) : mine
+    if (!mine.length || !group.length) {
       out.push(...mine)
       continue
     }
-    const verdict = assessFaceArray(face, mine, adj, { setbackM, obstacles })
+    const verdict = assessFaceArray(face, group, adj, { setbackM, obstacles })
     if (!verdict.ok) {
       notes.push(`${face.label}: the array alignment was not applied. ${verdict.reason} The panels stay on the grid.`)
       out.push(...mine)
       continue
     }
     const frame = faceFrame(face)
-    out.push(
-      ...mine.map((p, i) => {
+    const moved = new Map(
+      group.map((p, i) => {
         const uv = verdict.uv[i]
         const ctr = { x: uv.reduce((s, q) => s + q.x, 0) / uv.length, y: uv.reduce((s, q) => s + q.y, 0) / uv.length }
-        return { ...p, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng(ctr) }
+        return [p.id, { ...p, uv, corners: uv.map(frame.toLatLng), center: frame.toLatLng(ctr) }]
       }),
     )
+    out.push(...mine.map((p) => moved.get(p.id) ?? p))
   }
   for (const p of panels) if (!seen.has(p.id)) out.push(p)
   return out

@@ -2,21 +2,13 @@
  * One place that turns the project state into every number the customer sees.
  * Used by the steps, the bottom bar and the summary download.
  */
-import { PRICES_ARE_PLACEHOLDERS } from '../config/pricing'
-import {
-  batteryPrice,
-  billImpact,
-  paybackYears,
-  simulateYear,
-  solarPrice,
-  stateYield,
-  suggestedInverterKw,
-} from './energyModel'
+import { billImpact, simulateYear, stateYield, suggestedInverterKw } from './energyModel'
+import { priceDesign } from './priceBenchmarks'
 import { layoutPanels, validateLayout } from './panelLayout'
 import { MAX_DC_AC_RATIO, ROOF_EDGE_SETBACK_M } from '../config/designerConfig'
 import { roofTotals } from './roofFaces'
 
-export function computeDesign({ profile, insights, roofFaces, pv, battery, state, layoutOptions = {} }) {
+export function computeDesign({ profile, insights, roofFaces, pv, battery, state, layoutOptions = {}, installerQuoteAud = null }) {
   const roof = roofTotals(roofFaces ?? [])
   const layout = layoutPanels({
     insights,
@@ -72,30 +64,20 @@ export function computeDesign({ profile, insights, roofFaces, pv, battery, state
     result.validation.ok = false
   }
 
-  const sp = solarPrice(layout.dcKw)
-  const bp = batteryPrice(batteryKwh)
-  if (bp.note) result.warnings.push(bp.note)
-  const total = bp.price === null ? null : sp.mid + bp.price
-  result.pricing = {
-    placeholder: PRICES_ARE_PLACEHOLDERS,
-    solar: sp,
-    battery: bp,
-    totalMid: total,
-    totalLow: total === null ? null : sp.low + (bp.price ?? 0),
-    totalHigh: total === null ? null : sp.high + (bp.price ?? 0),
-  }
-
   if (profile) {
     result.sim = simulateYear({ annualGenKwh, annualLoadKwh: profile.annualKwh, batteryKwh, state })
     result.bill = billImpact(result.sim, profile)
     result.simSolarOnly = simulateYear({ annualGenKwh, annualLoadKwh: profile.annualKwh, batteryKwh: 0, state })
     result.billSolarOnly = billImpact(result.simSolarOnly, profile)
-    result.payback = {
-      total: total === null ? null : paybackYears(total, result.bill.savingAnnual),
-      solarOnly: paybackYears(sp.mid, result.billSolarOnly.savingAnnual),
-      batteryAddOn:
-        bp.price > 0 ? paybackYears(bp.price, result.bill.savingAnnual - result.billSolarOnly.savingAnnual) : null,
-    }
   }
+  result.pricing = priceDesign({
+    dcKw: layout.dcKw,
+    batteryKwh,
+    state,
+    quoteAud: installerQuoteAud,
+    solarSaving: result.billSolarOnly?.savingAnnual ?? null,
+    projectSaving: result.bill?.savingAnnual ?? null,
+  })
+  result.payback = result.pricing.payback
   return result
 }

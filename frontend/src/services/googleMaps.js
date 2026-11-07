@@ -213,8 +213,7 @@ export async function createMapController(container) {
 
     /**
      * faces: roof faces; opts: { selectedId, dim, onSelect(id), editableId, onEdit(id, vertices) }.
-     * The editable face gets corner handles (drag a corner, drag a mid-point to add one,
-     * right-click a corner to delete it).
+     * The editable face gets corner handles (drag a corner, drag a mid-point to add one).
      */
     showRoofFaces(faces, opts = {}) {
       clearList(overlays.faces)
@@ -274,7 +273,7 @@ export async function createMapController(container) {
           strokeOpacity: 0.7,
           strokeWeight: 1,
           fillColor: '#9ec5ff',
-          fillOpacity: 0.08,
+          fillOpacity: 0.2,
           zIndex: 4,
         })
         g.setValues({ ssdKind: 'ghost', ssdId: ghost.id })
@@ -410,14 +409,32 @@ export async function createMapController(container) {
     },
 
     /**
-     * Larger corner dots (pixel-sized, so they stay touchable).
-     * Dragging one moves that corner. A smaller dot in the middle of an edge inserts a corner.
+     * Corner handles. The drawn ring is small and translucent. The marker image
+     * is larger and transparent so a finger still has a target. Dragging a
+     * corner moves it. A smaller ring in the middle of an edge inserts a corner.
      */
     showCornerHandles(points, { onChange } = {}) {
       clearList(overlays.handles)
       if (!points || points.length < 3 || !onChange) return
       const commit = (next) => {
         if (next.length >= 3) onChange(next.map((p) => ({ lat: p.lat, lng: p.lng })))
+      }
+      const iconFor = (kind) => {
+        const hit = kind === 'insert' ? 36 : 44
+        const ring = kind === 'insert' ? 3.5 : 5
+        const colour = kind === 'insert' ? '#f5a623' : '#ffffff'
+        const stroke = kind === 'insert' ? '#f5a623' : '#0f6b4a'
+        const fillOpacity = kind === 'insert' ? 0.35 : 0.45
+        const c = hit / 2
+        const svg =
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${hit}" height="${hit}" viewBox="0 0 ${hit} ${hit}">` +
+          `<circle cx="${c}" cy="${c}" r="${ring}" fill="${colour}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-opacity="0.8" stroke-width="1.25"/>` +
+          `</svg>`
+        return {
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+          scaledSize: new maps.Size(hit, hit),
+          anchor: new maps.Point(c, c),
+        }
       }
       points.forEach((p, index) => {
         const marker = new maps.Marker({
@@ -426,14 +443,7 @@ export async function createMapController(container) {
           draggable: true,
           zIndex: 30,
           title: 'Drag this corner. Zooming does not make the aerial photo sharper.',
-          icon: {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 12,
-            fillColor: '#ffffff',
-            fillOpacity: 1,
-            strokeColor: '#0f6b4a',
-            strokeWeight: 2,
-          },
+          icon: iconFor('corner'),
         })
         marker.addListener('dragend', () => {
           const ll = marker.getPosition()
@@ -451,14 +461,7 @@ export async function createMapController(container) {
           draggable: true,
           zIndex: 29,
           title: 'Drag to add a corner',
-          icon: {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 7,
-            fillColor: '#f5a623',
-            fillOpacity: 0.9,
-            strokeColor: '#ffffff',
-            strokeWeight: 1,
-          },
+          icon: iconFor('insert'),
         })
         marker.addListener('dragend', () => {
           const ll = marker.getPosition()

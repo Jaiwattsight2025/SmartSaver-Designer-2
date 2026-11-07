@@ -9,7 +9,7 @@ battery system in six steps:
 3. **Panels** – rows laid inside each confirmed outline. Edit tools are under **Adjust design**. Size can follow the Energy Insights suggestion.
 4. **Battery & inverter** – suggested sizes, editable.
 5. **Output** – yearly and monthly generation, self-use vs export, bill before/after.
-6. **Summary** – size, savings, placeholder price, payback; quote / shop links; print. A confirmed design keeps an internal snapshot for a later PDF. There is no customer JSON download.
+6. **Summary** – size, savings, and price benchmarks or an installer quote; quote / shop links; print. A confirmed design keeps an internal snapshot for a later PDF. There is no customer JSON download.
 
 ## Run
 
@@ -57,11 +57,11 @@ Still to test against a configured host (not covered by unit tests):
 | Path | What |
 | --- | --- |
 | `src/config/designerConfig.js` | Modelling assumptions (yields by state, load/solar shapes, module sizes, inverter/battery options) |
-| `src/config/pricing.js` | **Placeholder** prices and shop/quote URLs – edit here |
+| `src/config/pricing.js` | Shop and quote URLs only |
+| `src/lib/priceBenchmarks.js` | Solar Choice and Cheaper Home Batteries figures, with the cell each number comes from |
 | `src/lib/` | Pure logic: profile parsing, roof faces, panel layout, energy model, design, summary export |
 | `src/hooks/useDesign.js` | Joins project state into one computed design |
 | `src/components/steps/` | One component per step |
 | `src/services/googleMaps.js` | Map, roof-face/panel overlays and tracing |
 
-All prices are placeholders (`PRICES_ARE_PLACEHOLDERS = true`) and are labelled as such in the UI
-and in exports. Battery prices are the archived AlphaESS listings from the SmartSaver Shopify store.
+Installed prices are the Solar Choice November 2026 indices (solar updated 6 November 2026, batteries the same day) and the Cheaper Home Batteries STC factors (updated 9 June 2026). A size outside those tables is unavailable. Solar and battery figures are not added together. A simple payback is shown only from one complete price: a solar-only index figure, or an installer quote the customer types.

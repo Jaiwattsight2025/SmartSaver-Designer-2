@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { resolvePanelDrag } from './lib/panelLayout'
+import { nextPanelAdd, resolvePanelDrag } from './lib/panelLayout'
 import { editedOutline } from './lib/roofFaces'
 import './App.css'
 import MapCanvas from './components/MapCanvas'
@@ -152,11 +152,17 @@ function App() {
       },
       add(id) {
         if (placed.includes(id)) return
-        actions.updateDesign({
-          removedPanelIds: removedIds.filter((x) => x !== id),
-          pinnedPanelIds: [...pinnedIds.filter((x) => x !== id), id],
-          panelCount: layout.count + 1,
+        const cell = [...layout.candidates, ...(layout.removedCells ?? [])].find((c) => c.id === id)
+        const decision = nextPanelAdd({
+          placedIds: placed,
+          cell,
+          panels: layout.panels,
+          panelCount: layout.panels.length,
+          faceArrays: designChoices.faceArrays,
+          removedIds,
+          obstacles: designChoices.obstacles,
         })
+        actions.updateDesign(decision.patch)
       },
       drag(id, latLng) {
         // A shaky click becomes a short drag and Google then skips the click.
@@ -180,7 +186,7 @@ function App() {
       },
     }
     return api
-  }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, actions])
+  }, [design.layout, designChoices.removedPanelIds, designChoices.pinnedPanelIds, designChoices.faceArrays, designChoices.obstacles, actions])
 
   // Draw roof faces, no-go areas and panels on the map for the current step.
   useEffect(() => {

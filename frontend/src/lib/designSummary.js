@@ -1,6 +1,7 @@
 /* The downloadable design ("smartsaver-design" v1) and a plain-text summary. */
 import { MONTHS } from '../config/designerConfig'
 import { buildDesignSnapshot } from './designSnapshot'
+import { summaryPriceLines } from './priceBenchmarks'
 import { installTypeOf } from './roofFaces'
 
 export const DESIGN_FORMAT = 'smartsaver-design'
@@ -18,7 +19,15 @@ export function buildDesignJson({ profile, design, pv, roofFaces, latitude, conf
     format: DESIGN_FORMAT,
     version: DESIGN_VERSION,
     createdAt: now.toISOString(),
-    pricesArePlaceholders: design.pricing.placeholder,
+    priceBenchmarks: {
+      solarStandardAud: design.pricing?.solar?.standard?.aud ?? null,
+      solarStandardDerived: Boolean(design.pricing?.solar?.standard?.derived),
+      solarPremiumAud: design.pricing?.solar?.premium?.aud ?? null,
+      batteryOnlyAud: design.pricing?.battery?.only?.aud ?? null,
+      batteryOnlyDerived: Boolean(design.pricing?.battery?.only?.derived),
+      quoteAud: design.pricing?.quoteAud ?? null,
+      combinedFromIndices: false,
+    },
     location: { postcode: profile?.postcode ?? null, state: profile?.state ?? null },
     energyProfile: profile
       ? {
@@ -64,11 +73,12 @@ export function buildDesignJson({ profile, design, pv, roofFaces, latitude, conf
         }
       : null,
     price: {
-      solarMid: r0(design.pricing.solar.mid),
-      batteryPrice: r0(design.pricing.battery.price),
-      totalLow: r0(design.pricing.totalLow),
-      totalHigh: r0(design.pricing.totalHigh),
-      paybackYears: design.payback?.total ? r1(design.payback.total) : null,
+      solarStandardAud: design.pricing?.solar?.standard?.aud ?? null,
+      solarPremiumAud: design.pricing?.solar?.premium?.aud ?? null,
+      batteryOnlyAud: design.pricing?.battery?.only?.aud ?? null,
+      batteryPlusInverterAud: design.pricing?.battery?.withInverter?.aud ?? null,
+      quoteAud: design.pricing?.quoteAud ?? null,
+      paybackYears: design.payback?.kind === 'user-quote' && design.payback.years ? r1(design.payback.years) : null,
     },
     warnings: design.warnings,
     snapshot: frozen,
@@ -91,8 +101,7 @@ export function buildSummaryText({ profile, design, pv }) {
     lines.push(`Bill before: ${money(design.bill.beforeAnnual)}/yr, after: ${money(design.bill.afterAnnual)}/yr`)
   }
   lines.push(
-    `Indicative price: ${money(design.pricing.totalLow)} - ${money(design.pricing.totalHigh)}${design.pricing.placeholder ? ' (PLACEHOLDER pricing, not a quote)' : ''}`,
+    ...summaryPriceLines(design.pricing, { dcKw: design.layout.dcKw, batteryKwh: design.batteryKwh }),
   )
-  if (design.payback?.total) lines.push(`Simple payback: ${design.payback.total.toFixed(1)} years`)
   return lines.join('\n')
 }
