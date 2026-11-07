@@ -62,7 +62,20 @@ export const MODULE_DIMENSIONS_BY_WATTS = {
 }
 export const PANEL_GAP_M = 0.02 // [ASSUMPTION] clamp gap between panels in a row
 export const ROW_GAP_M = 0.02 // [ASSUMPTION] gap between rows (flush-mounted)
-export const ROOF_EDGE_SETBACK_M = 0.4 // [ASSUMPTION] keep panels this far inside every roof edge
+// Planning inset from the drawn roof edge. Not a building-code clearance and not an installation approval.
+export const ROOF_EDGE_SETBACK_M = 0.2
+export const SETBACK_M_MIN = 0.2
+export const SETBACK_M_MAX = 1.5
+
+/**
+ * A stored number is the customer's choice and is kept, including 0.4 from an older session.
+ * Null, or a value outside the field, uses the current planning default.
+ */
+export function resolveSetbackM(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < SETBACK_M_MIN || n > SETBACK_M_MAX) return ROOF_EDGE_SETBACK_M
+  return n
+}
 export const OBSTACLE_CLEARANCE_M = 0.3 // [ASSUMPTION] keep panels this far from vents, skylights, etc.
 export const DEFAULT_PANEL_ORIENTATION = 'portrait' // long side up the roof
 export const MAX_ADDED_PANEL_SNAP_M = 1.5 // a dragged panel snaps to the nearest grid spot within this distance

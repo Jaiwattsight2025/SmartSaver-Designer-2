@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useProject } from '../../context/ProjectContext'
 import { useDesign } from '../../hooks/useDesign'
 import { AzimuthEditor } from './RoofStep'
-import { MAX_RESIDENTIAL_KW, MODULE_WATT_OPTIONS, PLANNING_KW_MAX, PLANNING_KW_MIN, ROOF_EDGE_SETBACK_M } from '../../config/designerConfig'
+import { MAX_RESIDENTIAL_KW, MODULE_WATT_OPTIONS, PLANNING_KW_MAX, PLANNING_KW_MIN, resolveSetbackM, SETBACK_M_MAX, SETBACK_M_MIN } from '../../config/designerConfig'
 import { stepInPlaneRotation, wrapDegrees } from '../../lib/arrayAdjust'
 import { assessFaceArray, fillFace, gutterTurned, moduleSize, mountFor, proposeCentre } from '../../lib/panelLayout'
 import ValidationList from '../ValidationList'
@@ -18,7 +18,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
   const arrays = designChoices.faceArrays ?? {}
   const alignFace = (building.roofFaces ?? []).find((f) => f.id === building.selectedRoofFaceId && f.included) ?? null
   const align = alignFace ? arrays[alignFace.id] ?? { dxM: 0, dyM: 0, rotationDeg: 0 } : null
-  const setback = designChoices.setbackM ?? ROOF_EDGE_SETBACK_M
+  const setback = resolveSetbackM(designChoices.setbackM)
 
   const commitArray = (face, next) => {
     const ids = new Set(layout.panels.filter((p) => p.faceId === face.id).map((p) => p.id))
@@ -102,7 +102,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       <p className="mount-summary">
         {layout.spatialCount ?? layout.available} spots fit with the panels where they are now
         {layout.spatialCount ? ` (${((layout.spatialCount * pv.moduleWatts) / 1000).toFixed(1)} kW)` : ''}. Blue outlines
-        are spare spots and they move when the group moves. This design places {layout.count} ({fmtKw(layout.dcKw)}).
+        are spare spots on the ticked faces, including a face that has none placed yet. This design places {layout.count} ({fmtKw(layout.dcKw)}).
       </p>
       <details className="adjust-design">
         <summary>Adjust design</summary>
@@ -216,14 +216,14 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         ))}
       </div>
 
-      <label htmlFor="setback">Gap from roof edges (m)</label>
+      <label htmlFor="setback">Planning setback from roof edges (m)</label>
       <input
         id="setback"
         type="number"
-        min="0.2"
-        max="1.5"
+        min={SETBACK_M_MIN}
+        max={SETBACK_M_MAX}
         step="0.05"
-        value={designChoices.setbackM ?? ROOF_EDGE_SETBACK_M}
+        value={setback}
         onChange={(e) => {
           const v = Number(e.target.value)
           if (Number.isFinite(v) && v >= 0.2 && v <= 1.5)
@@ -285,7 +285,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         </label>
       </div>
       <small className="hint">
-        Spots that fit are full panels inside the setbacks, clear of the panels already placed, no-go areas, and tilt-frame row gaps. Blue outlines are those spare spots. They update when you slide or turn the group. The target is the number below. The planning size is a sizing assumption, not a network approval. Setbacks stay.
+        Spots that fit are full panels inside the planning setback, clear of the panels already placed, no-go areas, and tilt-frame row gaps. Blue outlines are those spare spots on every ticked face. They update when you slide or turn the group. The target is the number below. The planning size and the setback are sizing assumptions, not a network approval or a building-code clearance.
       </small>
       {layout.dcKw > planningKw + 0.05 && (
         <small className="hint">
@@ -352,8 +352,8 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
       <ValidationList validation={design.validation} />
 
       <small className="hint">
-        Panels are laid out in straight rows from the gutter, {Math.round((designChoices.setbackM ?? ROOF_EDGE_SETBACK_M) * 100)} cm
-        in from every roof edge.{' '}
+        Panels are laid out in straight rows from the gutter, {Math.round(setback * 100)} cm
+        in from every drawn roof edge. That inset is a planning assumption, not an installation approval or a building-code clearance.{' '}
         {layout.assumptions?.some((a) => a.id === 'tilt-yield')
           ? 'Tilt-frame output is an estimate from your state’s average sun. It is not a boost on Google’s flush figures.'
           : layout.source === 'solar-api'

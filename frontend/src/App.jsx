@@ -225,7 +225,7 @@ function App() {
     const editing = activeStep === 'panels' && panelEdit
     const layout = design.layout
     map.showPanels(showPanelsNow ? layout.panels : [], {
-      ghosts: editing ? layout.candidates.slice(layout.count) : [],
+      ghosts: onPanels ? layout.candidates.slice(layout.panels.length) : [],
       onPanelClick: editing ? editPanels.remove : undefined,
       onGhostClick: editing ? editPanels.add : undefined,
       onPanelDrag: editing ? editPanels.drag : undefined,

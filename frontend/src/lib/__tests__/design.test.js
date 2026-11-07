@@ -46,7 +46,7 @@ describe('roof faces from the Solar API', () => {
 describe('panel layout', () => {
   const faces = facesFromBuildingInsights(insightsFixture)
   it('fills the north face on its own grid, ranks by Google yield, capped at what fits', () => {
-    const l = layoutPanels({ insights: insightsFixture, faces, panelCount: 20, moduleWatts: 440, state: 'VIC' })
+    const l = layoutPanels({ insights: insightsFixture, faces, panelCount: 20, moduleWatts: 440, state: 'VIC', setbackM: 0.4 })
     expect(l.available).toBe(21) // 0.4 m setback, 1.134 m modules (Google packed 24 smaller ones)
     expect(l.count).toBe(20)
     expect(l.source).toBe('solar-api')
@@ -56,7 +56,7 @@ describe('panel layout', () => {
     expect(l.panels[0].yearlyAcKwh).toBeGreaterThan(0.97 * top)
     expect(Math.max(...l.panels.map((p) => p.yearlyAcKwh))).toBeCloseTo(top, 3)
     expect(l.panels.every((p) => p.faceId === 'seg-0')).toBe(true)
-    const many = layoutPanels({ insights: insightsFixture, faces, panelCount: 99, moduleWatts: 440, state: 'VIC' })
+    const many = layoutPanels({ insights: insightsFixture, faces, panelCount: 99, moduleWatts: 440, state: 'VIC', setbackM: 0.4 })
     expect(many.count).toBe(21)
     expect(validateLayout(many, faces).ok).toBe(true)
   })
@@ -77,10 +77,11 @@ describe('panel layout', () => {
     const face = manualFace({ id: 'm1', vertices: [a, b, c, d], pitchDegrees: 20, azimuthDegrees: 0 })
     expect(face.groundAreaSquareMetres).toBeCloseTo(60, 0)
     expect(face.areaSquareMetres).toBeCloseTo(63.9, 0)
-    // usable 9.2 m x 5.2 m; portrait 1.134 x 1.656 (plan) -> 7 across x 3 rows
-    expect(gridPanelsForFace(face).length).toBe(21)
-    // landscape 1.762 x 1.066 (plan) -> 5 across x 4 rows
-    expect(gridPanelsForFace(face, { orientation: 'landscape' }).length).toBe(20)
+    // At the previous 0.4 m inset: usable 9.2 m x 5.2 m; portrait 1.134 x 1.656 (plan) -> 7 across x 3 rows
+    expect(gridPanelsForFace(face, { setbackM: 0.4 }).length).toBe(21)
+    expect(gridPanelsForFace(face).length).toBeGreaterThanOrEqual(21)
+    // landscape 1.762 x 1.066 (plan) -> 5 across x 4 rows at 0.4 m
+    expect(gridPanelsForFace(face, { orientation: 'landscape', setbackM: 0.4 }).length).toBe(20)
     // bigger setback, fewer panels
     expect(gridPanelsForFace(face, { setbackM: 1 }).length).toBeLessThan(21)
     const l = layoutPanels({ insights: null, faces: [face], panelCount: 10, moduleWatts: 440, state: 'VIC' })

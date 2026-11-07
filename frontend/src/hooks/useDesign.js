@@ -5,6 +5,7 @@ import { stateFromPostcode } from '../lib/energyProfile'
 import { suggestedBatteryKwh, suggestedPanelCount } from '../lib/energyModel'
 import { STATES } from '../config/designerConfig'
 import { sizingLimitKw } from '../lib/panelLayout'
+import { resolveSetbackM } from '../config/designerConfig'
 
 /** "11 Example St, Suburb VIC 3147, Australia" -> { state, postcode } (kept in memory only). */
 export function locationFromAddress(address) {
@@ -36,7 +37,7 @@ export function useDesign() {
     const roofConfirmed = Boolean(building.roofModelAccepted)
     const layoutOptions = {
       orientation: designChoices.panelOrientation,
-      setbackM: designChoices.setbackM,
+      setbackM: resolveSetbackM(designChoices.setbackM),
       rowGapM: designChoices.rowGapM,
       removedPanelIds: designChoices.removedPanelIds ?? [],
       pinnedPanelIds: designChoices.pinnedPanelIds ?? [],

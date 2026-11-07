@@ -1,5 +1,10 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Planning setback default 0.2 m
+
+- A new design and a reset use a 0.2 m inset from the drawn roof edge. That inset is a planning assumption, not an installation approval or a building-code clearance. A saved number, including 0.4 from an older session, is kept. The field stays editable from 0.2 m to 1.5 m.
+- Edge, no-go, overlap and tilt-frame row-gap checks use the setback that is in force. A face is not skipped because its direction is north. If the inset cannot hold one panel, the page says so. Spare spots on a ticked face that the target did not fill stay visible as blue outlines.
+
 ## [designer-v2] – 2026-11-07 – Proposal look locked to the approved report
 
 - The downloadable proposal uses the approved 7 November 2026 report treatment: Solar Designer by SmartSaver Energy (named once), green and mint, flat category colours, and the footer “Indicative estimate, not a quote”. Daylight use is green, battery supply is teal, exports are amber, and modelled charging loss is grey. Those slices come from figures the design already stored. There is no red-to-green score gauge and no hourly chart.

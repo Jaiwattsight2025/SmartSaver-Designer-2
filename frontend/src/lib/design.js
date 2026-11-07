@@ -5,7 +5,7 @@
 import { billImpact, simulateYear, stateYield, suggestedInverterKw } from './energyModel'
 import { priceDesign } from './priceBenchmarks'
 import { layoutPanels, validateLayout } from './panelLayout'
-import { MAX_DC_AC_RATIO, ROOF_EDGE_SETBACK_M } from '../config/designerConfig'
+import { MAX_DC_AC_RATIO, resolveSetbackM } from '../config/designerConfig'
 import { roofTotals } from './roofFaces'
 
 export function computeDesign({ profile, insights, roofFaces, pv, battery, state, layoutOptions = {}, installerQuoteAud = null }) {
@@ -53,7 +53,7 @@ export function computeDesign({ profile, insights, roofFaces, pv, battery, state
 
   // Final checks: panels inside the roof with the setback, no overlaps, no no-go areas, inverter limit.
   result.validation = validateLayout(layout, roofFaces ?? [], {
-    setbackM: layoutOptions.setbackM ?? ROOF_EDGE_SETBACK_M,
+    setbackM: resolveSetbackM(layoutOptions.setbackM),
     obstacles: layoutOptions.obstacles ?? [],
   })
   if (dcAcRatio !== null && dcAcRatio > MAX_DC_AC_RATIO + 1e-9) {

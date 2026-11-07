@@ -2,7 +2,7 @@
  * Panel layout (D2).
  *
  * Each included roof face is filled on its own grid:
- *   - the outline is shrunk by the edge setback (default 0.4 m),
+ *   - the outline is shrunk by the edge setback (planning default 0.2 m),
  *   - rows start at the gutter and run up the roof, lined up with the gutter,
  *   - panels are portrait or landscape, with the chosen module's real size,
  *     foreshortened by the roof pitch (what you see from above),
@@ -744,6 +744,21 @@ export function layoutPanels({
   const panelsNow = live.panels
   const countNow = panelsNow.length
   const spatialNow = countNow + live.spares.length
+  const usedSetback = layoutOpts({ setbackM }).setbackM
+  for (const stat of faceStats) {
+    const placedHere = panelsNow.filter((p) => p.faceId === stat.faceId).length
+    const spareHere = live.spares.filter((p) => p.faceId === stat.faceId).length
+    const name = stat.label ?? stat.faceId
+    if (stat.fits === 0 && spareHere === 0) {
+      notes.push(
+        `${name}: no full panel fits inside the ${usedSetback} m planning setback. That inset is not a code clearance, and it is not the only reason a face can stay empty.`,
+      )
+    } else if (placedHere === 0 && stat.fits + spareHere > 0) {
+      notes.push(
+        `${name}: ${stat.fits + spareHere} spot${stat.fits + spareHere === 1 ? '' : 's'} fit, and none are in the current target. Blue outlines show them. Raising the target uses them without moving panels already placed.`,
+      )
+    }
+  }
   if (wanted > spatialNow && spatialNow >= 0) {
     notes.push(
       `There are ${spatialNow} spots that fit with the panels where they are now. Your target asked for ${wanted}. Setbacks, row gaps and no-go areas are unchanged.`,
