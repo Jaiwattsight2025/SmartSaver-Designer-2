@@ -1530,22 +1530,245 @@ details.solar-panel summary::-webkit-details-marker {
   }
 }
 
-.proposal-kicker {
-  margin: 0 0 4px;
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.proposal {
+  --report-green: #20a97c;
+  --report-deep: #003c2b;
+  --report-ink: #1a3c34;
+  --report-muted: #5f7570;
+  --report-line: #d5e3dc;
+  --report-mint: #eaf6f1;
+  --report-amber: #f5a623;
+  --report-amber-soft: #fbf6ea;
+  --report-amber-line: #e6c27a;
+  --report-daylight: #20a878;
+  --report-battery: #186888;
+  --report-export: #f0a020;
+  --report-loss: #b0b8b8;
+  color: var(--report-ink);
 }
 
-.proposal-synthetic {
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border: 1px solid #e0c36a;
-  border-radius: 8px;
-  background: #fff6d8;
-  color: #5c4810;
+.proposal-mast {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.proposal-brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.proposal-brand strong {
+  display: block;
+  color: var(--report-deep);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.proposal-brand span,
+.proposal-meta {
+  color: var(--report-muted);
   font-size: 12px;
+  line-height: 1.4;
+}
+
+.proposal-meta {
+  margin: 0;
+  text-align: right;
+}
+
+.proposal-mark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+
+.proposal-banner,
+.proposal-callout,
+.proposal-disclaimer {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.proposal-banner.example,
+.proposal-banner.estimate {
+  border: 1px solid var(--report-amber-line);
+  background: var(--report-amber-soft);
+  color: #5c4810;
+}
+
+.proposal-callout {
+  border: 0;
+  border-left: 4px solid var(--report-green);
+  background: var(--report-mint);
+  color: var(--report-ink);
+}
+
+.proposal-callout strong {
+  color: var(--report-deep);
+  font-size: 16px;
+}
+
+.proposal h3 {
+  margin: 14px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--report-green);
+  color: var(--report-deep);
+  font-size: 18px;
+}
+
+.proposal-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.proposal-card {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--report-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.proposal-card span,
+.proposal-card small {
+  display: block;
+  color: var(--report-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.proposal-card strong {
+  display: block;
+  margin: 2px 0;
+  color: var(--report-deep);
+  font-size: 16px;
+}
+
+.proposal-face {
+  display: block;
+  text-align: left;
+}
+
+.proposal-faces {
+  text-align: left !important;
+}
+
+.proposal-cite,
+.proposal .chart-note,
+.proposal-disclaimer {
+  color: var(--report-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.proposal-disclaimer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 2px solid var(--report-green);
+  border-radius: 0;
+}
+
+.proposal-endorsement {
+  margin: 8px 0 0;
+  color: var(--report-muted);
+  font-size: 11px;
+}
+
+.proposal-donuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.proposal-donuts.single {
+  grid-template-columns: minmax(0, 280px);
+}
+
+.proposal-donut {
+  margin: 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.proposal-donut svg {
+  width: 148px;
+  height: 148px;
+  display: block;
+  margin: 0 auto;
+}
+
+.proposal-legend {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+}
+
+.proposal-legend li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 2px 0;
+}
+
+.proposal-legend i {
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.proposal .monthly-chart .bar-gen,
+.proposal .monthly-chart .key.gen {
+  fill: var(--report-amber);
+  background: var(--report-amber);
+}
+
+.proposal .monthly-chart .bar-load,
+.proposal .monthly-chart .key.load {
+  fill: var(--report-deep);
+  background: var(--report-deep);
+}
+
+.proposal .chart-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--report-deep);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.proposal .layout-sketch {
+  background: var(--report-mint);
+  border-color: var(--report-line);
+}
+
+.proposal .report-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.proposal .report-table td:first-child {
+  width: 38%;
+  color: var(--report-muted);
+  font-weight: 600;
+}
+
+.proposal .report-table td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 
 .proposal-cover,
@@ -1561,6 +1784,20 @@ details.solar-panel summary::-webkit-details-marker {
 @page {
   size: A4;
   margin: 14mm 14mm 16mm;
+
+  @bottom-left {
+    content: "Indicative estimate, not a quote";
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    color: #5f7570;
+  }
+
+  @bottom-right {
+    content: "Solar Designer  |  Page " counter(page);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    color: #1a3c34;
+  }
 }
 
 @media print {
@@ -1632,10 +1869,12 @@ details.solar-panel summary::-webkit-details-marker {
 
   .report-table,
   .monthly-chart,
-  .supply-chart,
   .layout-sketch-wrap,
-  .proposal-facts,
-  .supply-split {
+  .proposal-cards,
+  .proposal-callout,
+  .proposal-banner,
+  .proposal-donut,
+  .proposal-mast {
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -1651,11 +1890,42 @@ details.solar-panel summary::-webkit-details-marker {
   }
 
   .layout-sketch,
-  .supply-doughnut,
+  .proposal-donut svg,
+  .proposal-mark,
+  .proposal-banner,
+  .proposal-callout,
+  .proposal-card,
+  .proposal-legend i,
   .monthly-chart .bar-gen,
   .monthly-chart .bar-load {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .proposal-endorsement {
+    display: none;
+  }
+
+  .proposal .report-table td {
+    padding: 4px 0;
+  }
+
+  .proposal h4 {
+    margin: 8px 0 4px;
+  }
+
+  .proposal-cite,
+  .proposal-disclaimer {
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .proposal-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .proposal-donuts {
+    grid-template-columns: 1fr 1fr;
   }
 
   .report p,
@@ -1664,8 +1934,11 @@ details.solar-panel summary::-webkit-details-marker {
   }
 
   .report h3,
-  .report h4 {
-    color: #0f6b4a !important;
+  .report h4,
+  .proposal-brand strong,
+  .proposal-card strong,
+  .proposal .chart-title {
+    color: #003c2b !important;
   }
 
   .report-table td {

@@ -38,7 +38,7 @@ export default function OutputStep() {
  * Generation, self-use and bill tables from the design already computed for
  * Output and savings. Print uses this same component. It does not recalculate.
  */
-export function SavingsReport({ design }) {
+export function SavingsReport({ design, variant }) {
   const { sim, bill } = design
   if (!sim) {
     return (
@@ -51,7 +51,15 @@ export function SavingsReport({ design }) {
   const a = sim.annual
   return (
     <>
-      <MonthlyChart months={sim.months} />
+      <MonthlyChart
+        months={sim.months}
+        title={variant === 'proposal' ? 'Use and solar output by month' : undefined}
+        note={
+          variant === 'proposal'
+            ? 'Your use is this bill scaled across the year. Solar output is modelled for this design. Neither is measured month by month.'
+            : undefined
+        }
+      />
       <div className="report-columns">
         <section>
           <h4>Where your solar goes (per year)</h4>

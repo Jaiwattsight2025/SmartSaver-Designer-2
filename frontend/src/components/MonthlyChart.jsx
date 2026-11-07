@@ -1,7 +1,7 @@
 import { MONTHS } from '../config/designerConfig'
 
 /** Simple SVG bars: solar generation vs household use, per month. */
-export default function MonthlyChart({ months }) {
+export default function MonthlyChart({ months, title, note }) {
   if (!months?.length) return null
   const W = 640
   const H = 220
@@ -14,6 +14,7 @@ export default function MonthlyChart({ months }) {
 
   return (
     <figure className="monthly-chart">
+      {title && <figcaption className="chart-title">{title}</figcaption>}
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Monthly solar generation compared with household use">
         {ticks.map((t) => (
           <g key={t}>
@@ -40,9 +41,10 @@ export default function MonthlyChart({ months }) {
           )
         })}
       </svg>
-      <figcaption>
+      <figcaption className="chart-key">
         <span className="key gen" /> Solar generated (kWh) <span className="key load" /> Household use (kWh)
       </figcaption>
+      {note && <p className="chart-note">{note}</p>}
     </figure>
   )
 }

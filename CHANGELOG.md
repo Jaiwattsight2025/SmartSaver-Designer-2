@@ -1,5 +1,10 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Proposal look locked to the approved report
+
+- The downloadable proposal uses the approved 7 November 2026 report treatment: Solar Designer by SmartSaver Energy (named once), green and mint, flat category colours, and the footer “Indicative estimate, not a quote”. Daylight use is green, battery supply is teal, exports are amber, and modelled charging loss is grey. Those slices come from figures the design already stored. There is no red-to-green score gauge and no hourly chart.
+- The page order is still the summary, the roof layout, generation and savings from Output and savings, then the price basis and assumptions. A missing bill or a missing complete price stays unavailable. The locked colours, footer, and checklist are in `docs/report-design.md` and `frontend/src/lib/reportDesign.js`.
+
 ## [designer-v2] – 2026-11-07 – Spare spots, roof direction on Panels, Move map
 
 - Spare panel outlines are checked again after a slide, turn, add, remove, setback, or no-go change. A spot that no longer fits a full panel is hidden. A spot that becomes free can show. The search also places a panel in a bay the gutter grid never listed, without moving the panels already there. Clicking a spot uses that same check. A refused move does not delete placed panels.
