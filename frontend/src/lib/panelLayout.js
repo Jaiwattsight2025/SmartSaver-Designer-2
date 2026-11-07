@@ -437,20 +437,20 @@ function liveSpareSlots({
     })
     spares.push(...found)
   }
-  const must = spares.filter((s) => pinned.has(s.id))
-  const optional = spares.filter((s) => !pinned.has(s.id))
+  const removedIds = new Set((removedCells ?? []).map((cell) => cell.id))
+  const must = spares.filter((s) => pinned.has(s.id) && !removedIds.has(s.id))
+  const optional = spares.filter((s) => !pinned.has(s.id) && !removedIds.has(s.id))
+  const held = spares.filter((s) => removedIds.has(s.id))
   const limit = maxByKw === Infinity ? wanted : Math.min(wanted, maxByKw)
   let budget = Math.max(0, limit - placed.length)
   const added = []
-  for (const spot of must) added.push(spot)
-  budget = Math.max(0, budget - must.length)
-  for (const spot of optional) {
+  for (const spot of [...must, ...optional]) {
     if (budget <= 0) break
     added.push(spot)
     budget -= 1
   }
   const addedIds = new Set(added.map((s) => s.id))
-  const left = [...must, ...optional].filter((s) => !addedIds.has(s.id))
+  const left = [...must, ...optional, ...held].filter((s) => !addedIds.has(s.id))
   return { panels: [...placed, ...added], spares: left }
 }
 
@@ -639,7 +639,7 @@ export function layoutPanels({
     notes.push(
       `The roof fits ${spatialCount} panels inside the setbacks. The planning size is ${maxKw} kW (${maxByKw} panels), so the design stops there. That size is a planning assumption you can change. It is not a statement of what your network allows.`,
     )
-  } else if (wanted > spatialCount) {
+  } else if (Number.isFinite(wanted) && wanted > spatialCount) {
     notes.push(
       `This grid has ${spatialCount} spots inside the setbacks on the faces you ticked. Your target asked for ${wanted}. That count is not a proof another arrangement could fit more. The setbacks are unchanged.`,
     )
@@ -832,17 +832,21 @@ export function sizingLimitKw({ panelCount, moduleWatts, planningKw } = {}) {
 
 /**
  * How many panels to ask for.
- * No chosen target: every spot the planning size allows. The household suggestion is not a cap.
+ * No chosen target: every valid spot. The planning size and the household suggestion are not caps.
  * A chosen target is that number, including one that matches the suggestion.
  */
-export function resolvePlacementCount({ panelCount, moduleWatts, planningKw } = {}) {
+export function resolvePlacementCount({ panelCount } = {}) {
   if (panelCount != null && panelCount !== '') {
     const explicit = Number(panelCount)
     if (Number.isFinite(explicit) && explicit >= 0) return Math.round(explicit)
   }
-  const planning = Number(planningKw) > 0 ? Number(planningKw) : MAX_RESIDENTIAL_KW
-  const watts = Number(moduleWatts) > 0 ? Number(moduleWatts) : 440
-  return Math.max(0, Math.floor((planning * 1000) / watts + 1e-9))
+  return Number.POSITIVE_INFINITY
+}
+
+/** Planning size limits only an explicit target. An unset layout is the full valid roof. */
+export function placementMaxKw({ panelCount, moduleWatts, planningKw } = {}) {
+  if (panelCount == null || panelCount === '') return Number.POSITIVE_INFINITY
+  return sizingLimitKw({ panelCount, moduleWatts, planningKw })
 }
 
 /** Whether one grid cell can be added beside the panels already on the roof. */

@@ -4,7 +4,7 @@ import { computeDesign } from '../lib/design'
 import { stateFromPostcode } from '../lib/energyProfile'
 import { suggestedBatteryKwh, suggestedPanelCount } from '../lib/energyModel'
 import { STATES } from '../config/designerConfig'
-import { resolvePlacementCount, sizingLimitKw } from '../lib/panelLayout'
+import { placementMaxKw, resolvePlacementCount } from '../lib/panelLayout'
 import { resolveSetbackM } from '../config/designerConfig'
 
 /** "11 Example St, Suburb VIC 3147, Australia" -> { state, postcode } (kept in memory only). */
@@ -47,7 +47,7 @@ export function useDesign() {
       pinnedPanelIds: designChoices.pinnedPanelIds ?? [],
       obstacles: designChoices.obstacles ?? [],
       latitude: building.location?.lat ?? insights?.center?.latitude ?? insights?.center?.lat ?? null,
-      maxKw: sizingLimitKw({
+      maxKw: placementMaxKw({
         panelCount: designChoices.panelCount,
         moduleWatts: designChoices.moduleWatts,
         planningKw: designChoices.planningKw,

@@ -292,7 +292,7 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         </label>
       </div>
       <small className="hint">
-        Spots that fit are full panels inside the planning setback, clear of the panels already placed, no-go areas, and tilt-frame row gaps. Blue outlines are those spare spots on every ticked face. They update when you slide or turn the group. The target is the number below. The planning size and the setback are sizing assumptions, not a network approval or a building-code clearance.
+        Spots that fit are full panels inside the planning setback, clear of the panels already placed, no-go areas, and tilt-frame row gaps. A new design starts with all of those spots. That is the roof fit, not a network approval and not a recommendation of what to buy. The planning size does not reduce it. Set a lower target, or remove a panel, to use less.
       </small>
       {layout.dcKw > planningKw + 0.05 && (
         <small className="hint">
@@ -326,15 +326,20 @@ export default function PanelsStep({ onGoToRoof, roofConfirmed, editMode, onEdit
         aria-label="Number of panels"
       />
       <small className="hint">
-        Up to {layout.available} panels fit on the faces you picked. Until you set a target, those spots are used, up to the planning size.{' '}
+        Up to {layout.available} panels fit on the faces you picked. With no target saved, that is the starting layout.{' '}
         {profile?.recommendedSolarKw
           ? `Energy Insights suggested ${profile.recommendedSolarKw} kW = ${suggestedPanels} panels.`
           : `Suggested for your use: ${suggestedPanels} panels.`}
-        {wanted > layout.available && ` That is more than fits, so we placed ${layout.available}.`}
+        {Number.isFinite(wanted) && wanted > layout.available && ` That is more than fits, so we placed ${layout.available}.`}
       </small>
       {layout.count !== Math.min(suggestedPanels, layout.available) && (
         <button type="button" className="link-button" onClick={() => actions.updateDesign({ panelCount: suggestedPanels })}>
           Use suggested size
+        </button>
+      )}
+      {designChoices.panelCount != null && layout.count < (layout.spatialCount ?? layout.available) && (
+        <button type="button" className="link-button" onClick={() => actions.updateDesign({ panelCount: null })}>
+          Fill available roof
         </button>
       )}
 

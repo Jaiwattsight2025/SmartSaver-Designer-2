@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { suggestedPanelCount } from '../energyModel'
-import { resolvePlacementCount, layoutPanels, sizingLimitKw } from '../panelLayout'
+import { placementMaxKw, resolvePlacementCount, layoutPanels, sizingLimitKw } from '../panelLayout'
 import { syntheticRoofFaces } from '../syntheticFixture'
 import { offset } from '../geo'
 import { manualFace } from '../roofFaces'
@@ -14,7 +14,7 @@ function place(panelCount, extra = {}) {
     panelCount,
     moduleWatts: 440,
     state: 'VIC',
-    maxKw: sizingLimitKw({
+    maxKw: placementMaxKw({
       panelCount: extra.explicit ?? null,
       moduleWatts: 440,
       planningKw: extra.planningKw ?? null,
@@ -31,9 +31,12 @@ describe('untouched target fills every ticked face the planning size allows', ()
     expect(fresh).toBeGreaterThan(suggested)
     const laid = place(fresh)
     const used = new Set(laid.panels.map((panel) => panel.faceId))
+    const gridFits = laid.faceStats.reduce((sum, stat) => sum + stat.fits, 0)
     expect(used.size).toBeGreaterThan(1)
     expect(laid.count).toBeGreaterThan(suggested)
-    expect(laid.count).toBe(Math.min(laid.spatialCount, fresh))
+    expect(gridFits).toBeGreaterThan(30)
+    expect(laid.count).toBe(gridFits)
+    expect(laid.dcKw).toBeGreaterThan(13.2)
     for (const face of included) {
       const fits = laid.faceStats.find((stat) => stat.faceId === face.id)?.fits ?? 0
       if (fits > 0) expect(laid.panels.some((panel) => panel.faceId === face.id)).toBe(true)
@@ -54,12 +57,46 @@ describe('untouched target fills every ticked face the planning size allows', ()
     expect(afterEdit).toBe(15)
   })
 
-  it('lowers the fill when the planning size is the only limit and no target was chosen', () => {
-    const cap = resolvePlacementCount({ panelCount: null, moduleWatts: 440, planningKw: 5 })
-    expect(cap).toBe(11)
-    const laid = place(cap, { planningKw: 5 })
-    expect(laid.count).toBeLessThanOrEqual(11)
-    expect(laid.count).toBeGreaterThan(0)
+  it('a lower target wins over panels pinned by an earlier larger count', () => {
+    const open = resolvePlacementCount({ panelCount: null, moduleWatts: 440, planningKw: null })
+    const full = place(open)
+    const pins = full.panels.slice(0, -1).map((panel) => panel.id)
+    const fewer = layoutPanels({
+      insights: null,
+      faces: included,
+      panelCount: 15,
+      moduleWatts: 440,
+      state: 'VIC',
+      maxKw: placementMaxKw({ panelCount: 15, moduleWatts: 440, planningKw: 13.2 }),
+      pinnedPanelIds: pins,
+    })
+    expect(fewer.count).toBe(15)
+    expect(fewer.candidates.some((cell) => cell.id === pins[pins.length - 1])).toBe(true)
+  })
+
+  it('keeps a panel the customer removed when the layout fills the roof again', () => {
+    const open = resolvePlacementCount({ panelCount: null, moduleWatts: 440, planningKw: null })
+    const full = place(open)
+    const gone = full.panels[0].id
+    const again = layoutPanels({
+      insights: null,
+      faces: included,
+      panelCount: open,
+      moduleWatts: 440,
+      state: 'VIC',
+      maxKw: placementMaxKw({ panelCount: null, moduleWatts: 440, planningKw: null }),
+      removedPanelIds: [gone],
+    })
+    expect(again.panels.map((panel) => panel.id)).not.toContain(gone)
+    expect(again.count).toBe(full.count - 1)
+  })
+
+  it('does not let the planning size shrink an unset layout', () => {
+    const open = resolvePlacementCount({ panelCount: null, moduleWatts: 440, planningKw: 5 })
+    const laid = place(open, { planningKw: 5 })
+    const gridFits = laid.faceStats.reduce((sum, stat) => sum + stat.fits, 0)
+    expect(laid.count).toBe(gridFits)
+    expect(laid.count).toBeGreaterThan(11)
   })
 })
 

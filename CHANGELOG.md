@@ -1,5 +1,9 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Start from the full valid roof
+
+- A new design, or one with no saved target, places every spot that fits on the ticked faces. The planning size and the household suggestion do not reduce that starting layout. Lower the target, or remove a panel, to use less. Fill available roof puts an explicit target back to that full fit and does not restore panels that were removed. A saved target is kept. This roof fit is not a network approval and not a recommendation of what to buy.
+
 ## [designer-v2] – 2026-11-07 – Place panels on every ticked face
 
 - With no target chosen, the layout uses every spot that fits, up to the planning size. It no longer stops at the 6.6 kW suggestion when other ticked faces still have room. The suggestion stays a separate button. A target the customer set, including 15, is kept when the planning size changes.
