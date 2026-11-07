@@ -6,13 +6,28 @@ import { buildQuoteUrl, pickShopLinks } from '../../lib/shopifyHandoff'
 import { buildSummaryText } from '../../lib/designSummary'
 import { installTypeOf } from '../../lib/roofFaces'
 import { fmtKw, fmtKwh, fmtMoney, fmtYears } from '../../lib/format'
+import { SavingsReport } from './OutputStep'
 import { BATTERY_INDEX, BATTERY_REBATE, SOLAR_INDEX } from '../../lib/priceBenchmarks'
 import ValidationList from '../ValidationList'
 
 function useSummaryData() {
   const { building } = useProject()
   const { design, pv, profile } = useDesign()
-  return { design, pv, profile, roofFaces: building.roofFaces }
+  return { design, pv, profile, roofFaces: building.roofFaces, address: building.formattedAddress }
+}
+
+/** One line for the cover. The figures are design.payback, the same object as the price page. */
+export function coverPayback(payback) {
+  if (payback?.kind === 'user-quote' && payback.years) {
+    return `From your quote: ${fmtYears(payback.years)}. Savings-to-cost ${payback.savingsToCostPct.toFixed(1)}%. Not an IRR.`
+  }
+  if (payback?.kind === 'solar-only' && (payback.standard?.years || payback.premium?.years)) {
+    const parts = []
+    if (payback.standard?.years) parts.push(`Standard offer ${fmtYears(payback.standard.years)}`)
+    if (payback.premium?.years) parts.push(`Premium offer ${fmtYears(payback.premium.years)}`)
+    return `${parts.join('. ')}. Separate tiers, not a range. Not an IRR.`
+  }
+  return 'Unavailable until there is one complete price. Solar and battery benchmarks are not added together.'
 }
 
 function paybackBlurb(payback) {
@@ -112,6 +127,9 @@ export default function SummaryStep() {
       <button type="button" className="secondary-button" onClick={() => window.print()}>
         Print / save PDF
       </button>
+      <small className="hint">
+        The PDF starts with this system, the saving and payback, then the output charts, bills and price basis.
+      </small>
       <button type="button" className="link-button" onClick={copySummary}>
         Copy summary text
       </button>
@@ -121,95 +139,125 @@ export default function SummaryStep() {
 }
 
 export function SummaryReport() {
-  const { design, pv, profile, roofFaces } = useSummaryData()
-  const used = roofFaces.filter((f) => f.included)
-  const p = design.pricing
+  const data = useSummaryData()
+  return <ProposalDocument {...data} />
+}
+
+export function ProposalDocument({ design, pv, profile, roofFaces, address = '' }) {
+  const used = (roofFaces ?? []).filter((f) => f.included)
+  const synthetic = /synthetic fixture/i.test(address || '')
+  const bill = design.bill
   return (
-    <div className="report summary-report">
-      <div className="print-only print-header">
-        <strong>SmartSaver Energy</strong> · Solar + Battery design summary
-      </div>
-      <h3>Your design</h3>
-      <LayoutSketch panels={design.layout.panels} />
-      <div className="report-columns">
-        <section>
-          <h4>System</h4>
-          <table className="report-table">
-            <tbody>
-              <tr>
-                <td>Solar panels</td>
-                <td>
-                  {design.layout.count} × {pv.moduleWatts} W = {fmtKw(design.layout.dcKw)}
-                </td>
-              </tr>
-              <tr>
-                <td>Inverter</td>
-                <td>{design.inverterKw} kW</td>
-              </tr>
-              <tr>
-                <td>Battery</td>
-                <td>{design.batteryKwh > 0 ? `${design.batteryKwh} kWh` : 'None'}</td>
-              </tr>
-              <tr>
-                <td>Roof faces used</td>
-                <td>
-                  {used.length
-                    ? used
-                        .map((f) => `${f.orientation} ${f.pitchDegrees}° ${installTypeOf(f) === 'tilt' ? 'tilt frames' : 'flush'}`)
-                        .join(', ')
-                    : '—'}
-                </td>
-              </tr>
-              <tr>
-                <td>Location</td>
-                <td>{[profile?.postcode, profile?.state].filter(Boolean).join(' ') || '—'}</td>
-              </tr>
-            </tbody>
-          </table>
-          <SupplyChart sim={design.sim} />
-          <h4>Energy and savings (per year)</h4>
-          <table className="report-table">
-            <tbody>
-              <tr>
-                <td>Solar generated</td>
-                <td>{fmtKwh(design.annualGenKwh)}</td>
-              </tr>
-              {design.sim && (
-                <tr>
-                  <td>Used at home</td>
-                  <td>{Math.round(design.sim.annual.selfConsumptionPct)}%</td>
-                </tr>
-              )}
-              <tr>
-                <td>Bill now</td>
-                <td>{fmtMoney(design.bill?.beforeAnnual)}</td>
-              </tr>
-              <tr>
-                <td>Bill with system</td>
-                <td>{fmtMoney(design.bill?.afterAnnual)}</td>
-              </tr>
-              <tr className="total">
-                <td>Saving</td>
-                <td>{fmtMoney(design.bill?.savingAnnual)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-        <section>
-          <PriceSection pricing={p} dcKw={design.layout.dcKw} batteryKwh={design.batteryKwh} />
-          {design.warnings.map((w) => (
-            <p key={w} className="hint">
-              {w}
-            </p>
-          ))}
-          <ValidationList validation={design.validation} />
-          <p className="hint">
-            Savings come from this design&apos;s modelled use and the bill rates. Prices, where shown, are separate
-            benchmarks or the quote you typed. An installer still has to check the roof, switchboard and network rules.
+    <article className="report summary-report proposal">
+      <header className="proposal-cover">
+        <p className="proposal-kicker">SmartSaver Energy · Design summary</p>
+        <h3>Your system</h3>
+        {synthetic && (
+          <p className="proposal-synthetic">
+            Synthetic fixture — not a real property and not a live Google roof. No customer data is used.
           </p>
-        </section>
-      </div>
-    </div>
+        )}
+        <table className="report-table proposal-facts">
+          <tbody>
+            <tr>
+              <td>System</td>
+              <td>
+                {fmtKw(design.layout.dcKw)}
+                {design.batteryKwh > 0 ? ` + ${design.batteryKwh} kWh battery` : ''} · {design.layout.count} × {pv.moduleWatts} W · {design.inverterKw} kW inverter
+              </td>
+            </tr>
+            <tr>
+              <td>Solar generated</td>
+              <td>{fmtKwh(design.annualGenKwh)} / year</td>
+            </tr>
+            <tr>
+              <td>Bill now</td>
+              <td>{bill ? fmtMoney(bill.beforeAnnual) : 'Unavailable — add bill data'}</td>
+            </tr>
+            <tr>
+              <td>Bill with system</td>
+              <td>{bill ? fmtMoney(bill.afterAnnual) : 'Unavailable — add bill data'}</td>
+            </tr>
+            <tr className="total">
+              <td>Saving</td>
+              <td>{bill ? `${fmtMoney(bill.savingAnnual)} / year` : 'Unavailable — add bill data'}</td>
+            </tr>
+            <tr>
+              <td>Simple payback</td>
+              <td>{coverPayback(design.payback)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <LayoutSketch panels={design.layout.panels} />
+        <p className="hint">
+          The pages after this one use the same generation and bill figures as Output and savings. Prices are separate benchmarks, or a quote you typed. This is not an installer quotation.
+        </p>
+      </header>
+
+      <section className="proposal-follow">
+        <h3>Roof and system</h3>
+        <table className="report-table">
+          <tbody>
+            <tr>
+              <td>Solar panels</td>
+              <td>
+                {design.layout.count} × {pv.moduleWatts} W = {fmtKw(design.layout.dcKw)}
+              </td>
+            </tr>
+            <tr>
+              <td>Inverter</td>
+              <td>{design.inverterKw} kW</td>
+            </tr>
+            <tr>
+              <td>Battery</td>
+              <td>{design.batteryKwh > 0 ? `${design.batteryKwh} kWh` : 'None'}</td>
+            </tr>
+            <tr>
+              <td>Roof faces used</td>
+              <td>
+                {used.length
+                  ? used
+                      .map((f) => `${f.label ?? f.orientation}: ${f.orientation} ${f.pitchDegrees}° ${installTypeOf(f) === 'tilt' ? 'tilt frames' : 'flush'}`)
+                      .join('; ')
+                  : 'None confirmed'}
+              </td>
+            </tr>
+            <tr>
+              <td>Location</td>
+              <td>{[profile?.postcode, profile?.state].filter(Boolean).join(' ') || '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+        <LayoutSketch panels={design.layout.panels} />
+        {!design.layout.panels?.length && <p>No panels are placed, so there is no roof layout to draw.</p>}
+      </section>
+
+      <section className="proposal-follow proposal-generation" data-testid="proposal-generation">
+        <h3>Generation and bills</h3>
+        <SavingsReport design={design} />
+        <SupplyChart sim={design.sim} />
+      </section>
+
+      <section className="proposal-follow proposal-basis" data-testid="proposal-basis">
+        <h3>Price basis and assumptions</h3>
+        <PriceSection pricing={design.pricing} dcKw={design.layout.dcKw} batteryKwh={design.batteryKwh} />
+        <h4>Model notes</h4>
+        {(design.layout?.assumptions ?? []).map((a) => (
+          <p key={a.id} className="hint">
+            {a.text}
+          </p>
+        ))}
+        {design.warnings.map((w) => (
+          <p key={w} className="hint">
+            {w}
+          </p>
+        ))}
+        <ValidationList validation={design.validation} />
+        <p className="hint">
+          Savings come from this design&apos;s modelled use and the bill rates. An installer still has to check the roof, switchboard and network rules.
+        </p>
+      </section>
+    </article>
   )
 }
 
@@ -358,6 +406,27 @@ function LayoutSketch({ panels }) {
   )
 }
 
+function wedge(startPct, endPct, fill) {
+  const sweep = endPct - startPct
+  if (sweep >= 99.9) return <circle cx="50" cy="50" r="40" fill={fill} />
+  if (sweep <= 0.1) return null
+  const rad = (pct) => (pct / 100) * Math.PI * 2 - Math.PI / 2
+  const p = (pct) => ({ x: 50 + 40 * Math.cos(rad(pct)), y: 50 + 40 * Math.sin(rad(pct)) })
+  const a = p(startPct)
+  const b = p(endPct)
+  const large = sweep > 50 ? 1 : 0
+  return <path d={`M50,50 L${a.x.toFixed(2)},${a.y.toFixed(2)} A40,40 0 ${large} 1 ${b.x.toFixed(2)},${b.y.toFixed(2)} Z`} fill={fill} />
+}
+
+function SupplyPie({ gridPct }) {
+  return (
+    <>
+      {wedge(0, gridPct, '#1f4e79')}
+      {wedge(gridPct, 100, '#0f6b4a')}
+    </>
+  )
+}
+
 function SupplyChart({ sim }) {
   const a = sim?.annual
   if (!a || !(a.loadKwh > 0)) return null
@@ -373,12 +442,14 @@ function SupplyChart({ sim }) {
       </figcaption>
       {drawable ? (
         <div className="supply-split">
-          <div
+          <svg
             className="supply-doughnut"
-            style={{ background: `conic-gradient(#1f4e79 0 ${gridPct}%, #0f6b4a ${gridPct}% 100%)` }}
+            viewBox="0 0 100 100"
             role="img"
             aria-label={`Grid import ${Math.round(grid)} kilowatt hours, solar used at home ${Math.round(solar)} kilowatt hours`}
-          />
+          >
+            <SupplyPie gridPct={gridPct} />
+          </svg>
           <ul>
             <li>Grid import: {fmtKwh(grid)}</li>
             <li>Solar used at home: {fmtKwh(solar)}</li>

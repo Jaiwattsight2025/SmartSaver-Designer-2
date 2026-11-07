@@ -34,24 +34,23 @@ export default function OutputStep() {
   )
 }
 
-export function OutputReport() {
-  const { design } = useDesign()
+/**
+ * Generation, self-use and bill tables from the design already computed for
+ * Output and savings. Print uses this same component. It does not recalculate.
+ */
+export function SavingsReport({ design }) {
   const { sim, bill } = design
   if (!sim) {
     return (
-      <div className="report">
-        <h3>Your solar output</h3>
-        <p>
-          Your panels should make about <strong>{fmtKwh(design.annualGenKwh)}</strong> a year. Add your bill data in
-          step 1 (or on the left) to see self-use, export and bill savings.
-        </p>
-      </div>
+      <p>
+        Your panels should make about <strong>{fmtKwh(design.annualGenKwh)}</strong> a year. Add your bill data in
+        step 1 (or on the left) to see self-use, export and bill savings.
+      </p>
     )
   }
   const a = sim.annual
   return (
-    <div className="report">
-      <h3>Month by month</h3>
+    <>
       <MonthlyChart months={sim.months} />
       <div className="report-columns">
         <section>
@@ -124,6 +123,16 @@ export function OutputReport() {
         feed-in. An after-bill below $0 means credits exceed charges. Real results depend on weather, shading and how
         you use power.
       </p>
+    </>
+  )
+}
+
+export function OutputReport() {
+  const { design } = useDesign()
+  return (
+    <div className="report">
+      <h3>{design.sim ? 'Month by month' : 'Your solar output'}</h3>
+      <SavingsReport design={design} />
     </div>
   )
 }

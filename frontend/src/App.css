@@ -1307,7 +1307,6 @@ details.adjust-design summary {
 .supply-doughnut {
   width: 88px;
   height: 88px;
-  border-radius: 50%;
   flex: none;
 }
 
@@ -1514,18 +1513,66 @@ details.solar-panel summary::-webkit-details-marker {
   }
 }
 
-/* Print / Save as PDF: only the design summary */
+.proposal-kicker {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.proposal-synthetic {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #e0c36a;
+  border-radius: 8px;
+  background: #fff6d8;
+  color: #5c4810;
+  font-size: 12px;
+}
+
+.proposal-cover,
+.proposal-follow {
+  margin: 0;
+}
+
+.proposal-follow {
+  margin-top: 28px;
+}
+
+/* Print / Save as PDF: A4 proposal. Cover, then layout, generation and price basis. */
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm;
+}
+
 @media print {
+  html,
   body,
-  .app-shell {
+  .app-shell,
+  .main-layout,
+  .designer-grid,
+  .workspace,
+  .design-stage,
+  .map-stage {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
     background: #fff !important;
     color: #111 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
   }
 
   .topbar,
   .step-sidebar,
   .workspace-toolbar,
   .control-panel,
+  .panel-navigation,
   .stage-header,
   .metrics-strip,
   .google-map,
@@ -1533,36 +1580,74 @@ details.solar-panel summary::-webkit-details-marker {
     display: none !important;
   }
 
-  .main-layout,
-  .designer-grid,
-  .workspace {
-    display: block !important;
+  .report {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    height: auto !important;
+    background: #fff !important;
+    color: #111 !important;
     padding: 0 !important;
   }
 
-  .design-stage,
-  .map-stage {
-    min-height: 0 !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    background: #fff !important;
-    overflow: visible !important;
+  .report-columns {
+    display: block !important;
   }
 
-  .report {
-    position: static !important;
-    overflow: visible !important;
-    background: #fff !important;
-    color: #111 !important;
+  .proposal-cover {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .proposal-follow {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0;
+  }
+
+  /* Roof layout is short. Generation continues on that page instead of opening a sparse sheet. */
+  .proposal-generation {
+    break-before: auto;
+    page-break-before: auto;
+    margin-top: 18px;
+  }
+
+  .report-table,
+  .monthly-chart,
+  .supply-chart,
+  .layout-sketch-wrap,
+  .proposal-facts,
+  .supply-split {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .proposal-cover .layout-sketch {
+    height: 78px;
+  }
+
+  .layout-sketch,
+  .supply-doughnut,
+  .monthly-chart .bar-gen,
+  .monthly-chart .bar-load {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .report p,
   .hint {
-    color: #444 !important;
+    color: #333 !important;
   }
 
+  .report h3,
   .report h4 {
-    color: #178a64 !important;
+    color: #0f6b4a !important;
   }
 
   .report-table td {
@@ -1573,9 +1658,8 @@ details.solar-panel summary::-webkit-details-marker {
     color: #0f6b4a !important;
   }
 
-  .placeholder-banner {
-    color: #9b1c1c !important;
-    background: #fdecec !important;
+  .monthly-chart svg {
+    max-height: 180px;
   }
 
   .print-only {

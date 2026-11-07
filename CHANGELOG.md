@@ -1,5 +1,11 @@
 # Changelog
 
+## [designer-v2] – 2026-11-07 – Print proposal includes output and savings
+
+- Print / save PDF from the summary is an A4 proposal. The first page is the system, yearly generation, bill now, bill with the system, saving, and simple payback only when one complete price supports it. Later pages are the roof layout, the generation chart and bill tables from Output and savings, the household supply chart, then the price basis, assumptions and source dates.
+- Those generation and bill figures are the same `SavingsReport` component the output tab renders. Print does not calculate them again. Solar and battery benchmarks are still not added. A missing bill is labelled unavailable. The synthetic fixture banner is repeated on the proposal so it is not only in the controls, which print hides.
+- Print hides the step list, controls, map and metric strip, and lets the report flow instead of clipping it to the map pane. Tables and charts stay together. Each detail section starts on a new page.
+
 ## [designer-v2] – 2026-11-07 – Handles, panel target, sourced prices
 
 - Corner handles draw a small translucent ring. The marker is 44 px (36 px for an edge insert) so the touch target stays large. The roof copy no longer says a right-click deletes a corner. Undo still puts the last corner edit back.
